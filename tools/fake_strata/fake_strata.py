@@ -16,7 +16,7 @@ folder called fake-strata in the system's temporary folder.
 
 Environment switches for tests: FAKE_STRATA_LOAD_S (pretend loading time, default 1.5), FAKE_STRATA_FAIL=1 (the
 start fails), FAKE_STRATA_HELPER=1 (pretend two cards), FAKE_STRATA_SEED (finished answers to begin with),
-FAKE_STRATA_HOLD (keep the server in one phase).
+FAKE_STRATA_HOLD (keep the server in one phase), FAKE_STRATA_STARTED (the start time written to the engine log).
 """
 
 from __future__ import annotations
@@ -214,6 +214,8 @@ def cmd_launch(args: list[str]) -> int:
         server += ["--seed-answers", os.environ["FAKE_STRATA_SEED"]]
     if os.environ.get("FAKE_STRATA_HOLD"):
         server += ["--hold", os.environ["FAKE_STRATA_HOLD"]]
+    if os.environ.get("FAKE_STRATA_STARTED"):
+        server += ["--started", os.environ["FAKE_STRATA_STARTED"]]
     print(f"Model: {model_name}, context {c['context'] // 1024}K, {c['parallel']} request slot(s)")
     print("[!] This is a stand-in for Strata. No model is loaded.")
     print("Starting the engine ...")

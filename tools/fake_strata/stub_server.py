@@ -6,7 +6,7 @@ idle -> reading the prompt -> thinking -> answering -> idle. Each finished answe
 written to the engine log in the wording Strata's engine uses.
 
   stub_server.py --port 18080 --log engine.log [--model NAME] [--context 32768] [--slots 2] [--key KEY]
-                 [--seed-answers 12] [--hold answering] [--helper]
+                 [--seed-answers 12] [--hold answering] [--helper] [--started "2026-01-15 10:30:00"]
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class World:
 
     def start_lines(self):
         a = self.a
-        stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.t0))
+        stamp = a.started or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.t0))
         lines = [f"[strata] {stamp} engine started: stand-in-engine --serve --pack /stand-in/pack --max-context {a.context} --batch {a.slots}",
                  "strata generate: PCIe probe: 24.0 GB/s host->device (best of 24.0 24.0 24.0 24.0) -> pcie_frac 0.55 (default 0.55)",
                  "strata generate: expert cache 5200 slots, 9.80 GiB of VRAM; policy is"]
@@ -199,6 +199,7 @@ def main(argv=None):
     ap.add_argument("--seed-answers", type=int, default=0)
     ap.add_argument("--hold", default="", choices=("", "idle", "reading the prompt", "thinking", "answering"))
     ap.add_argument("--helper", action="store_true", help="pretend a second card holds part of the model")
+    ap.add_argument("--started", default="", help="the start time written to the log, for pictures that should not change")
     a = ap.parse_args(argv)
     world = World(a)
     server = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(world))

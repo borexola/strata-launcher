@@ -57,7 +57,7 @@ def main() -> int:
     home.mkdir()
     os.environ.update(HOME=str(home), USERPROFILE=str(home), XDG_CONFIG_HOME=str(home / ".config"), FAKE_STRATA_HOME=str(fake_home),
                       FAKE_STRATA_PYTHON=sys.executable, FAKE_STRATA_SEED="14", FAKE_STRATA_HOLD="answering", FAKE_STRATA_HELPER="1",
-                      FAKE_STRATA_LOAD_S="0.3", STRATA_LAUNCHER_CONFIG_DIR=str(cfg_dir))
+                      FAKE_STRATA_LOAD_S="0.3", FAKE_STRATA_STARTED="2026-01-15 10:30:00", STRATA_LAUNCHER_CONFIG_DIR=str(cfg_dir))
     subprocess.run([sys.executable, str(HERE / "make_demo_config.py"), str(cfg_dir), "--port", str(PORT), "--access", "lan"],
                    check=True, stdout=subprocess.DEVNULL)
     fake = [sys.executable, str(HERE / "fake_strata" / "fake_strata.py")]

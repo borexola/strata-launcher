@@ -38,7 +38,7 @@ def main() -> int:
     # An .ico file: a 6-byte header, one 16-byte entry per picture, then the pictures (PNG data is allowed).
     out = struct.pack("<HHH", 0, 1, len(sizes))
     offset = 6 + 16 * len(sizes)
-    for size, data in zip(sizes, images):
+    for size, data in zip(sizes, images, strict=True):
         out += struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 32, len(data), offset)
         offset += len(data)
     (ASSETS / "icon.ico").write_bytes(out + b"".join(images))

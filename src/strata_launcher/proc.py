@@ -8,10 +8,13 @@ Rules kept here:
 
 from __future__ import annotations
 
+import locale
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -37,6 +40,14 @@ def own_scope(cmd: list[str], which=shutil.which) -> list[str]:
         return ["systemd-run", "--user", "--scope", "--quiet", "--collect", "-p", "OOMPolicy=continue",
                 f"--unit=strata-launcher-{int(time.time())}", "--"] + cmd
     return cmd
+
+
+def decode(data: bytes) -> str:
+    """Program output as text: UTF-8 when it is that, else the system's own encoding, never an error."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode(locale.getpreferredencoding(False) or "utf-8", "replace")
 
 
 class Busy(Exception):
@@ -74,6 +85,57 @@ class Runner:
             return job in self._jobs
 
     # ----- running things -----
+    def _run(self, cmd: list[str], timeout: float | None, on_line=None) -> tuple[int, str]:
+        """Runs cmd with its output going to a temporary file, and reads that file while it runs.
+
+        A file, not a pipe: a server that the command leaves running may keep the output open for days. With a pipe
+        the launcher would wait for it; with a file it only waits for the command itself to end.
+        Returns (exit code, the whole output). Exit code -1: it took too long. -2: it could not start (the output
+        is then the reason).
+        """
+        fd, path = tempfile.mkstemp(prefix="strata-launcher-", suffix=".out")
+        text: list[str] = []
+        try:
+            with os.fdopen(fd, "wb") as out:
+                try:
+                    p = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                         creationflags=no_window_flags())
+                except OSError as e:
+                    return -2, str(e)
+            started, rest, code = time.time(), b"", None
+            with open(path, "rb") as f:
+                while True:
+                    ended = p.poll() is not None
+                    chunk = f.read()
+                    if chunk:
+                        *lines, rest = (rest + chunk).split(b"\n")
+                        for raw in lines:
+                            line = decode(raw).rstrip("\r")
+                            text.append(line)
+                            if on_line:
+                                on_line(line)
+                    if ended:
+                        code = p.returncode
+                        break
+                    if timeout is not None and time.time() - started > timeout:
+                        p.kill()
+                        p.wait()
+                        code = -1
+                        break
+                    if not chunk:
+                        time.sleep(0.05)
+            if rest:
+                line = decode(rest).rstrip("\r")
+                text.append(line)
+                if on_line:
+                    on_line(line)
+            return code, "\n".join(text)
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass                                         # still open in a program that kept running: left in the temp folder
+
     def capture(self, cmd: list[str], timeout: float = 30, job: str | None = None) -> tuple[int, str]:
         """Runs a short command and returns (exit code, its output). Exit code -1: it could not run or took too long.
 
@@ -81,60 +143,36 @@ class Runner:
         """
         self._enter(job)
         try:
-            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                               text=True, errors="replace", timeout=timeout, creationflags=no_window_flags())
-            return p.returncode, p.stdout or ""
-        except subprocess.TimeoutExpired:
-            return -1, ""
-        except OSError as e:
-            return -1, str(e)
+            code, text = self._run(cmd, timeout)
+            return (-1, text) if code == -2 else (code, text)
         finally:
             self._leave(job)
 
     def stream(self, cmd: list[str], on_line=None, job: str | None = None, timeout: float | None = None) -> int:
-        """Runs a command, copies its output line by line to the log and to on_line, returns the exit code.
+        """Runs a command and passes its output on line by line (to on_line, else to the log). Returns the exit code.
 
-        It waits for the program to end, not for its output to close: a server that the program leaves running may
-        keep the output open, and that must not hang the launcher.
+        API keys are cut out of every line first.
         """
         self._enter(job)
         try:
             self.log("$ " + redact(" ".join(f'"{c}"' if " " in c else c for c in cmd)))
-            try:
-                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                     text=True, errors="replace", creationflags=no_window_flags())
-            except OSError as e:
-                self.log(f"could not start: {e}")
+
+            def each(line: str):
+                line = redact(line).strip()
+                if not line:
+                    return
                 if on_line:
-                    on_line(f"Could not start it: {e}")
+                    on_line(line)                            # the receiver writes it to the log too
+                else:
+                    self.log(line)
+            code, text = self._run(cmd, timeout, each)
+            if code == -2:
+                self.log(f"could not start: {redact(text)}")
+                if on_line:
+                    on_line(f"Could not start it: {redact(text)}")
                 return -1
-
-            def read():
-                try:
-                    for line in p.stdout:
-                        line = redact(line.rstrip())
-                        if not line.strip():
-                            continue
-                        if on_line:
-                            on_line(line.strip())                # the receiver writes it to the log too
-                        else:
-                            self.log(line)
-                except (OSError, ValueError):
-                    pass
-
-            reader = threading.Thread(target=read, daemon=True, name="output-reader")
-            reader.start()
-            try:
-                code = p.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                p.kill()
-                code = -1
-                self.log("stopped: it took too long")
-            reader.join(timeout=2.0)
-            try:
-                p.stdout.close()
-            except OSError:
-                pass
+            if code == -1:
+                self.log("it took too long and was stopped")
             return code
         finally:
             self._leave(job)

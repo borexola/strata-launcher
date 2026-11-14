@@ -206,6 +206,8 @@ class SystemProbe:
         self.prev: dict = {}
         self.pid = None
         self.pid_checked = 0.0
+        self.port: int | None = None
+        self.not_ours: set[int] = set()
         psutil.cpu_percent(None)                             # the first call only sets the starting point
 
     def _rate(self, name, value, now):
@@ -228,6 +230,11 @@ class SystemProbe:
             pass
         return s
 
+    def set_port(self, port: int | None):
+        """The port of the server this launcher looks after. An engine that serves another port is not ours."""
+        if port != self.port:
+            self.port, self.pid, self.not_ours = port, None, set()
+
     def find_engine(self, now: float) -> int | None:
         if self.pid:
             try:
@@ -242,9 +249,14 @@ class SystemProbe:
         self.pid_checked = now
         for p in psutil.process_iter(["name"]):
             try:
-                if _is_engine(p):
-                    self.pid = p.pid
-                    return self.pid
+                if p.pid in self.not_ours or not _is_engine(p):
+                    continue
+                port = engine_port(p)
+                if self.port and port and port != self.port:
+                    self.not_ours.add(p.pid)                 # another Strata server on this PC: leave it alone
+                    continue
+                self.pid = p.pid
+                return self.pid
             except psutil.Error:
                 continue
         return None
@@ -304,6 +316,27 @@ class SystemProbe:
         return out
 
 
+def port_in(cmdline: list[str]) -> int | None:
+    """The number after --port in a command line, or None."""
+    for i, word in enumerate(cmdline[:-1]):
+        if word == "--port" and cmdline[i + 1].isdigit():
+            return int(cmdline[i + 1])
+    return None
+
+
+def engine_port(p) -> int | None:
+    """The port an engine's server listens on: Strata's server starts the engine and has --port on its command line."""
+    try:
+        for parent in [p.parent(), p.parent().parent() if p.parent() else None]:
+            if parent is not None:
+                port = port_in(parent.cmdline())
+                if port:
+                    return port
+    except (psutil.Error, AttributeError):
+        pass
+    return None
+
+
 def _is_engine(p) -> bool:
     name = (p.info["name"] if getattr(p, "info", None) else p.name()) or ""
     name = name.lower()
@@ -337,6 +370,9 @@ class Sampler:
 
     # ----- called from the window's thread -----
     def set_target(self, url: str, cfg: dict | None, engine_log: str | None = None, model_dir: str | None = None):
+        m = re.search(r":(\d+)$", url or "")
+        if hasattr(self.probe, "set_port"):
+            self.probe.set_port(int(m.group(1)) if m else None)
         with self._lock:
             changed = url != self._target["url"]
             self._target = {"url": url, "cfg": cfg, "engine_log": engine_log or self._target.get("engine_log"),

@@ -133,7 +133,8 @@ class GpuWatch:
             return None
         head = [exe]
         if exe.endswith(".py"):                              # a stand-in written in Python (tests only)
-            python = os.environ.get("FAKE_STRATA_PYTHON") or ("python" if getattr(sys, "frozen", False) else sys.executable)
+            packaged = "python" if sys.platform.startswith("win") else "python3"     # the packaged program has no Python of its own to lend
+            python = os.environ.get("FAKE_STRATA_PYTHON") or (packaged if getattr(sys, "frozen", False) else sys.executable)
             head = [python, exe]
         return head + [f"--query-gpu={GPU_QUERY}", "--format=csv,noheader,nounits", "-l", "1"]
 

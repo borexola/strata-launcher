@@ -5,7 +5,9 @@ from __future__ import annotations
 import getpass
 import hashlib
 import os
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -37,6 +39,31 @@ def make_file_log():
         except OSError:
             pass
     return log
+
+
+def tidy_temp(now: float | None = None, folder: str | None = None) -> int:
+    """Removes what earlier runs left in the temporary folder: downloaded updates (after an hour) and output files
+    of commands whose server kept them open (after a day). Returns how many things were removed."""
+    now = time.time() if now is None else now
+    folder = folder or tempfile.gettempdir()
+    removed = 0
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(folder, name)
+        try:
+            age = now - os.path.getmtime(path)
+            if name.startswith("strata-launcher-update-") and os.path.isdir(path) and age > 3600:
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+            elif name.startswith("strata-launcher-") and name.endswith(".out") and os.path.isfile(path) and age > 86400:
+                os.unlink(path)
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def instance_name() -> str:
@@ -92,6 +119,7 @@ def create(argv=None, single=True, **window_args):
         server = QLocalServer(app)
         server.listen(name)
     cfg, opts, problems, first_run = load_everything()
+    tidy_temp()
     theme.apply(app, cfg.get("theme", "system"))
     log = make_file_log()
     win = MainWindow(cfg, opts, problems, first_run=first_run, runner=Runner(log), log=log, **window_args)

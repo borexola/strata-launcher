@@ -250,3 +250,19 @@ def test_the_self_test_refuses_anything_but_the_stand_in(fake_env, tmp_path):
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), QT_QPA_PLATFORM="offscreen")
     p = subprocess.run([sys.executable, "-m", "strata_launcher", "--selftest"], env=env, capture_output=True, text=True, timeout=60)
     assert p.returncode == 2 and "REFUSED" in p.stdout
+
+
+def test_old_downloads_are_tidied_but_fresh_ones_and_other_files_stay(tmp_path):
+    from strata_launcher.ui.app import tidy_temp
+    now = 2_000_000_000.0
+    old_update, new_update = tmp_path / "strata-launcher-update-old", tmp_path / "strata-launcher-update-new"
+    old_out, new_out, other = tmp_path / "strata-launcher-abc.out", tmp_path / "strata-launcher-def.out", tmp_path / "someone-elses-file.out"
+    for d in (old_update, new_update):
+        d.mkdir()
+        (d / "x.msi").write_bytes(b"x")
+    for f in (old_out, new_out, other):
+        f.write_text("x", encoding="utf-8")
+    for path, age in ((old_update, 7200), (new_update, 60), (old_out, 2 * 86400), (new_out, 3600), (other, 9 * 86400)):
+        os.utime(path, (now - age, now - age))
+    assert tidy_temp(now, str(tmp_path)) == 2
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["someone-elses-file.out", "strata-launcher-def.out", "strata-launcher-update-new"]

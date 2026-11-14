@@ -99,8 +99,8 @@ class World:
     # ----- what the server is doing now -----
     def phase(self):
         """(phase name, seconds into the phase, seconds the phase lasts, cycle number)."""
-        if self.a.hold:
-            return self.a.hold, 7.0, 14.0, 0
+        if self.a.hold:                                      # stay in one phase, with figures that still move
+            return self.a.hold, 2.0 + (time.time() - self.t0) % 10.0, 14.0, 0
         el = time.time() - self.t0
         total = sum(d for _, d in CYCLE)
         n, at = int(el // total), el % total

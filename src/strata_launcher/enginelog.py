@@ -145,6 +145,19 @@ class Perf:
         return summarise(self.answers)
 
 
+FACTS = ("started", "engine", "context", "slots", "gpu0_gib", "gpu0_n", "gpu1_gib", "gpu1_n", "ram_gib", "total_gib",
+         "slots_gib", "vram_free", "pcie", "file_set", "file_fits", "checks")
+
+
+class Facts:
+    """A fixed copy of what a Perf knows about the run, safe to hand to another thread."""
+
+    def __init__(self, perf: Perf | None = None):
+        for name in FACTS:
+            setattr(self, name, getattr(perf, name, None) if perf is not None else None)
+        self.checks = self.checks or 0
+
+
 def answer_text(a: dict) -> str:
     text = f"✔ Answer: {a['out']:,} tokens at {a['tps']:.1f} tok/s in {a['ms'] / 1000:.0f} s  ·  prompt {a['prompt']:,} tokens"
     if a.get("reused"):

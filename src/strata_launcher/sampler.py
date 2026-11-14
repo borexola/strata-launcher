@@ -30,13 +30,14 @@ import urllib.request
 import psutil
 
 from . import command, strata
-from .enginelog import Tail
-from .metrics import short_gpu
+from .enginelog import Facts, Tail, summarise
+from .metrics import answers_from_requests, short_gpu
 from .proc import Busy, Runner, no_window_flags
 
 GPU_QUERY = "index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw"
 ENGINE_NAMES = ("strata-host", "strata-host.exe")
 ENGINE_FILES = ("strata", "strata.exe")
+STATUS_WAITS = (0, 4, 15, 60)
 GIB = 2**30
 
 
@@ -145,7 +146,24 @@ class GpuWatch:
         if p and p.poll() is None:
             try:
                 p.terminate()
-            except OSError:
+                p.wait(timeout=2)
+            except Exception:
+                pass
+
+    def _reap(self):
+        """Collects the ended program, so no dead entry stays in the process list."""
+        p = self.proc
+        if p is None:
+            return
+        try:
+            if self.stopping and p.poll() is None:
+                p.terminate()
+            p.wait(timeout=3)
+        except Exception:
+            try:
+                p.kill()
+                p.wait(timeout=2)
+            except Exception:
                 pass
 
     def snapshot(self) -> list[dict]:
@@ -174,6 +192,7 @@ class GpuWatch:
                         break
             except Exception:
                 pass
+            self._reap()
             for _ in range(60):                              # it ended: try again in 30 s, never at once
                 if self.stopping:
                     return
@@ -313,7 +332,7 @@ class Sampler:
         self._first_log = False
         self._notified = False
         self.key, self.key_tried = None, 0.0
-        self.status_tried, self.was_up = 0.0, False
+        self.status_tries, self.status_next, self.was_up = 0, 0.0, False
         self.found: dict = {}                                # what the status call found: engine_log, model_dir
 
     # ----- called from the window's thread -----
@@ -323,7 +342,7 @@ class Sampler:
             self._target = {"url": url, "cfg": cfg, "engine_log": engine_log or self._target.get("engine_log"),
                             "model_dir": model_dir}
             if changed:
-                self.key, self.key_tried, self.status_tried, self.was_up = None, 0.0, 0.0, False
+                self.key, self.key_tried, self.was_up = None, 0.0, False
 
     def start(self):
         self.gpu.start()
@@ -353,10 +372,15 @@ class Sampler:
             pass
 
     def _find_files(self, cfg, url):
-        """Asks Strata once which launch is serving, to learn where its engine log is."""
-        if not cfg or not cfg.get("strata_command") or time.time() - self.status_tried < 30:
+        """Asks Strata which launch is serving, to learn where its engine log is.
+
+        At most four questions each time a server appears (at once, then 4, 15 and 60 seconds later), never two at once.
+        """
+        now = time.time()
+        if not cfg or not cfg.get("strata_command") or self.status_tries >= len(STATUS_WAITS) or now < self.status_next:
             return
-        self.status_tried = time.time()
+        self.status_tries += 1
+        self.status_next = now + (STATUS_WAITS[self.status_tries] if self.status_tries < len(STATUS_WAITS) else 0)
         try:
             _code, out = self.runner.capture(command.status_command(cfg), timeout=20, job="status")
         except Busy:
@@ -365,12 +389,18 @@ class Sampler:
         files = strata.launch_files(strata.parse_status(out), int(m.group(1)) if m else None)
         if files.get("engine_log"):
             self.found = files
+            self.status_tries = len(STATUS_WAITS)            # found: no more questions until the server changes
             with self._lock:
                 self._target["engine_log"] = files["engine_log"]
                 if files.get("model_dir") and not self._target.get("model_dir"):
                     self._target["model_dir"] = files["model_dir"]
 
-    def sample(self) -> dict:
+    def nudge(self):
+        """The window calls this after a start: the server may be a new one, so ask again where its log is."""
+        self.status_tries, self.status_next, self.found = 0, 0.0, {}
+
+    def sample(self) -> tuple[dict, list, bool]:
+        """One reading: (figures, new log lines, whether a log was read for the first time)."""
         now = time.time()
         with self._lock:
             target = dict(self._target)
@@ -387,7 +417,9 @@ class Sampler:
                 s["metrics"] = m if status == 200 and isinstance(m, dict) else None
                 s["metrics_denied"] = status in (401, 403)
         up = bool(s["health"])
-        if up and (not self.was_up or not target.get("engine_log")):
+        if up and not self.was_up:
+            self.nudge()
+        if up and not self.found:
             self._find_files(cfg, url)
             with self._lock:
                 target = dict(self._target)
@@ -398,6 +430,10 @@ class Sampler:
         s["engine_log"] = target.get("engine_log")
         self.tail.follow(target.get("engine_log"))
         records, first = self.tail.read()
+        # Copies made here, in the sampler thread, so the window never reads the log reader while it changes.
+        s["run"] = Facts(self.tail.perf)
+        s["answers"] = self.tail.perf.summary() or summarise(answers_from_requests((s["metrics"] or {}).get("requests")))
+        s["answers_from_log"] = bool(self.tail.perf.answers)
         return s, records, first
 
     def _loop(self):

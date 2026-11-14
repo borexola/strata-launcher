@@ -59,3 +59,12 @@ def asset(name: str) -> Path:
 
 def default_options_file() -> Path:
     return Path(__file__).resolve().parent / "default_options.json"
+
+
+def short(path) -> str:
+    """A path for showing: the person's home folder is written as ~ (shorter, and it keeps their name out of pictures)."""
+    text = str(path)
+    home = str(Path.home())
+    if home and home not in ("/", "\\") and (text == home or text.startswith(home + os.sep)):
+        return "~" + text[len(home):]
+    return text

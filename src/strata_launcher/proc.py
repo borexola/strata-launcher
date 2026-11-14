@@ -99,7 +99,7 @@ class Runner:
         """
         self._enter(job)
         try:
-            self.log("$ " + redact(" ".join(cmd)))
+            self.log("$ " + redact(" ".join(f'"{c}"' if " " in c else c for c in cmd)))
             try:
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                      text=True, errors="replace", creationflags=no_window_flags())
@@ -115,9 +115,10 @@ class Runner:
                         line = redact(line.rstrip())
                         if not line.strip():
                             continue
-                        self.log(line)
                         if on_line:
-                            on_line(line.strip())
+                            on_line(line.strip())                # the receiver writes it to the log too
+                        else:
+                            self.log(line)
                 except (OSError, ValueError):
                     pass
 

@@ -27,9 +27,9 @@ def test_every_setting_becomes_its_flags():
     o = opts()
     c = cfg_for(o, context="128k", parallel="4", vision="gpu", drafting="mtp", kv="q4_0", reserve=1024, speed="full", tune="quick",
                 gpu="0,1", gpu_roles="0=main,1=helper", access="lan", port=9000)
-    c["source"].update(model="iq3_s", family="qwen", data_dir="/models")
+    c["source"].update(model="iq3_xxs", family="qwen", data_dir="/models")
     flags = command.choice_flags(c, o)
-    assert flags[:6] == ["--family", "qwen", "--model", "iq3_s", "--data-dir", "/models"]
+    assert flags[:6] == ["--family", "qwen", "--model", "iq3_xxs", "--data-dir", "/models"]
     for pair in (["--context", "128k"], ["--parallel", "4"], ["--vision", "gpu"], ["--drafting", "mtp"], ["--kv", "q4_0"],
                  ["--set", "vram-reserve-mib=1024"], ["--speed", "full"], ["--tune", "quick"], ["--gpu", "0,1"],
                  ["--gpu-roles", "0=main,1=helper"], ["--access", "lan"], ["--port", "9000"]):

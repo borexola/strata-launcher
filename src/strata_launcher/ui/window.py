@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         self.records: list[tuple[str, str]] = []
         self.running = False
         self.was_ready = False
+        self.stopped_at = 0.0
         self.live_logged = 0.0
         self.hot_said = 0.0
         self.shown_sub = None
@@ -340,6 +341,7 @@ class MainWindow(QMainWindow):
             self.run_rows[key] = value
         self.hw_card = Card("Hardware now", "Updated every second.")
         self.hw_rows: dict[str, Meter] = {}
+        self.hw_order: dict[str, tuple] = {}
 
         inner, _ = page(label("Right now", "heading"), now_box, label("Answers in this run", "heading"), self.perf_note, ans_box,
                         self.chart, self.chart_caption, label("Where the memory goes", "heading"), self.mem_note, mem_holder,
@@ -844,6 +846,9 @@ class MainWindow(QMainWindow):
         self.preset_combo.setEditText(preset)
         self.loading = False
         self.refresh_strata_note()
+        if info["models"] and not model and not preset and not self.files_edit.text() and self.kind_group.checkedId() == 0:
+            self.model_combo.setEditText(info["models"][0]["id"])      # a first setup: start from a model that is there
+            self.say(f"Strata has the model {info['models'][0]['id']} set up, so it is chosen. You can change it on the Setup tab.")
         if not info.get("version"):
             self.say("The chosen strata command did not answer like Strata. Check the Setup tab.", "warn")
 
@@ -1049,6 +1054,9 @@ class MainWindow(QMainWindow):
 
     def on_done(self, name: str, ok: bool, message: str):
         self.busy = None
+        if name == "Stopping…":
+            self.was_ready = False
+            self.stopped_at = time.time() + 1.5
         if message:
             self.say(message, "launcher" if ok else "error")
         self.show_status()
@@ -1193,7 +1201,9 @@ class MainWindow(QMainWindow):
         if self.was_ready and not now_running and not self.busy:
             self.was_ready = False
             self.why_gone()
-        if state["kind"] in ("idle", "busy") and not self.busy:
+        # "Ready" is only noted from a reading taken after the last Stop finished: the reading from the second
+        # before would still show the server and make a wanted stop look like a crash.
+        if state["kind"] in ("idle", "busy") and not self.busy and s.get("at", 0) > self.stopped_at:
             self.was_ready = True
         self.running = now_running
         url, c = self.url(), self.colours
@@ -1352,31 +1362,43 @@ class MainWindow(QMainWindow):
                               + (f" The engine also keeps {files:.1f} GiB of the model files in memory (yellow). The system drops them when memory is short, "
                                  "and then they are read from the drive again." if files > 2 else ""))
 
-    def meter(self, key: str, title: str) -> Meter:
+    def meter(self, key: str, title: str, order: tuple = (9,)) -> Meter:
+        """The hardware row with this key. A new row is put in its place: cards first, then processor, RAM, swap, drives."""
         if key not in self.hw_rows:
             self.hw_rows[key] = Meter(title)
-            self.hw_card.add(self.hw_rows[key])
+            self.hw_order[key] = order
+            box = self.hw_card.box
+            for i in reversed(range(box.count())):           # take the rows out (the heading stays) and put them back in order
+                item = box.itemAt(i)
+                w = item.widget()
+                if w is not None and (isinstance(w, Meter) or w.objectName() == "line"):
+                    box.takeAt(i)
+                    if not isinstance(w, Meter):
+                        w.deleteLater()
+            self.hw_card.rows = 0
+            for k in sorted(self.hw_rows, key=lambda k: self.hw_order[k]):
+                self.hw_card.add(self.hw_rows[k])
         return self.hw_rows[key]
 
     def refresh_hardware(self, s: dict, gpus: list):
         for g in gpus:
             if g.get("used") is not None:
-                self.meter(f"gpu{g['index']}m", f"{g['name']} memory").set(g["used"] / g["total"], f"{g['used'] / 1024:.1f} of {g['total'] / 1024:.1f} GiB")
+                self.meter(f"gpu{g['index']}m", f"{g['name']} memory", (0, g["index"], 0)).set(g["used"] / g["total"], f"{g['used'] / 1024:.1f} of {g['total'] / 1024:.1f} GiB")
             extra = [f"{g['temp']:.0f} °C" if g.get("temp") is not None else "", f"{g['power']:.0f} W" if g.get("power") is not None else ""]
             if g.get("util") is not None:
-                self.meter(f"gpu{g['index']}u", f"{g['name']} load").set(g["util"] / 100.0, f"{g['util']:.0f}%", "  ·  ".join(x for x in extra if x))
+                self.meter(f"gpu{g['index']}u", f"{g['name']} load", (0, g["index"], 1)).set(g["util"] / 100.0, f"{g['util']:.0f}%", "  ·  ".join(x for x in extra if x))
         if s.get("cpu_pct") is not None:
             name = ((s.get("metrics") or {}).get("hardware_static") or {}).get("cpu_name")
-            self.meter("cpu", "Processor load").set(s["cpu_pct"] / 100.0, f"{s['cpu_pct']:.0f}%", str(name) if name else None)
+            self.meter("cpu", "Processor load", (1,)).set(s["cpu_pct"] / 100.0, f"{s['cpu_pct']:.0f}%", str(name) if name else None)
         if s.get("ram_total"):
             used = s["ram_total"] - s["ram_avail"]
             eng = (s.get("eng_locked") or 0) + (s.get("eng_work") or 0)
             note = (f"Strata's engine: {eng:.1f} GiB" + (f", plus {s['eng_files']:.1f} GiB of model files kept in memory" if (s.get("eng_files") or 0) > 0.1 else "")
                     if s.get("engine_pid") else "Strata's engine is not running")
-            self.meter("ram", "RAM in use").set(used / s["ram_total"], f"{used:.1f} of {s['ram_total']:.1f} GiB", note)
+            self.meter("ram", "RAM in use", (2,)).set(used / s["ram_total"], f"{used:.1f} of {s['ram_total']:.1f} GiB", note)
         if s.get("swap_total"):
             used = s["swap_total"] - s["swap_free"]
-            self.meter("swap", "Swap in use").set(used / s["swap_total"], f"{used:.1f} of {s['swap_total']:.1f} GiB",
+            self.meter("swap", "Swap in use", (3,)).set(used / s["swap_total"], f"{used:.1f} of {s['swap_total']:.1f} GiB",
                                                   "Memory that programs had to give up to the drive." if used > 1 else "")
         for d in s.get("drives") or []:
             if d.get("temp") is None:
@@ -1384,7 +1406,7 @@ class MainWindow(QMainWindow):
             note = f"hottest sensor inside: {d['hottest']:.0f} °C"
             if d.get("warn") and d.get("crit"):
                 note += f"  ·  the drive slows down at {d['warn']:.0f} °C and shuts off at {d['crit']:.0f} °C"
-            self.meter(f"drv-{d['id']}", f"{d['model']} temperature" + (" (holds the model)" if d["holds_model"] else "")).set(
+            self.meter(f"drv-{d['id']}", f"{d['model']} temperature" + (" (holds the model)" if d["holds_model"] else ""), (4, d["id"])).set(
                 d["temp"] / (d.get("crit") or 90), f"{d['temp']:.0f} °C", note)
             hot = (d.get("warn") and d["temp"] >= d["warn"] - 8) or d["hottest"] >= 85
             if d["holds_model"] and hot and time.time() - self.hot_said > 120:

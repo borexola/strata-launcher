@@ -24,14 +24,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "src"))
 PORT = 18441
-HEIGHTS = {"settings": 1330, "performance": 1900, "log": 760, "setup": 1230, "app": 1080}
+HEIGHTS = {"settings": 1330, "performance": 2060, "log": 760, "setup": 1230, "app": 1080}
 
 
 class DemoProbe:
     """Made-up figures for the PC, so the pictures show nothing about the computer they were made on."""
 
     def system(self, now):
-        return {"ram_total": 64.0, "ram_avail": 38.2, "swap_total": 8.0, "swap_free": 7.6, "swap_in_mb_s": 0.0,
+        return {"ram_total": 48.0, "ram_avail": 26.2, "swap_total": 8.0, "swap_free": 7.6, "swap_in_mb_s": 0.0,
                 "swap_out_mb_s": 0.0, "cpu_pct": 23.0}
 
     def engine(self, now):
@@ -39,7 +39,7 @@ class DemoProbe:
                 "disk_total_gb": 23.4}
 
     def drives(self, model_dir):
-        return [{"id": "demo0", "model": "Demo NVMe 2TB", "temp": 47.0, "hottest": 55.0, "warn": 84.0, "crit": 88.0, "holds_model": True}]
+        return [{"id": "demo0", "model": "Demo NVMe 1TB", "temp": 47.0, "hottest": 55.0, "warn": 84.0, "crit": 88.0, "holds_model": True}]
 
 
 def main() -> int:

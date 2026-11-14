@@ -8,7 +8,7 @@ import os
 import sys
 import time
 
-CARDS = [("Demo Card A 24GB", 24576, 21900, 250.0), ("Demo Card B 16GB", 16384, 6400, 70.0)]
+CARDS = [("Demo Card A 24GB", 24576, 21900, 250.0), ("Demo Card B 12GB", 12288, 6400, 70.0)]
 
 
 def rows(tick: int) -> list[str]:

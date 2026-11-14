@@ -147,9 +147,9 @@ class World:
                            "conversation_cache_slots": a.slots, "drafting": "mtp"},
                 "live": self.live(), "requests": requests, "requests_kept": len(requests), "totals": totals,
                 "hardware": {"gpu_util": 86 if busy else 4, "gpu_mem_used": 21.9 * 2**30, "gpu_mem_total": 24 * 2**30, "gpu_temp": 64 if busy else 41,
-                             "gpu_power": 248.0 if busy else 36.0, "cpu": 21.0 if busy else 3.0, "ram_used": 19 * 2**30, "ram_total": 64 * 2**30},
-                "hardware_static": {"gpu_name": "Demo Card A 24GB", "gpu_count": 2 if a.helper else 1, "cpu_name": "Demo 16-core processor",
-                                    "cores": 16, "threads": 32},
+                             "gpu_power": 248.0 if busy else 36.0, "cpu": 21.0 if busy else 3.0, "ram_used": 14 * 2**30, "ram_total": 48 * 2**30},
+                "hardware_static": {"gpu_name": "Demo Card A 24GB", "gpu_count": 2 if a.helper else 1, "cpu_name": "Demo 12-core processor",
+                                    "cores": 12, "threads": 24},
                 "time": time.time()}
 
 

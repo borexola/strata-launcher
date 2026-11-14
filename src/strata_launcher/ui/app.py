@@ -7,6 +7,7 @@ import hashlib
 import os
 import sys
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon
@@ -118,7 +119,7 @@ def first_run_question(win: MainWindow):
     box.addButton("Later", QMessageBox.RejectRole)
     box.exec()
     if box.clickedButton() is choose:
-        path = QFileDialog.getExistingDirectory(win, "Choose the folder where Strata is installed")
+        path = QFileDialog.getExistingDirectory(win, "Choose the folder where Strata is installed", str(Path.home()))
         if path:
             win.use_strata(strata.accept(path), path)
 

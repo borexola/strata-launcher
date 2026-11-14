@@ -115,6 +115,33 @@ def test_start_twice_runs_one_start_then_stop(window, fake_env):
     assert pump(lambda: window.busy is None and not window.sample.get("health"), 30)
     assert window.status_title.text() == "Stopped" and http_json(fake_env["url"] + "/health", timeout=0.5)[0] == 0
     assert any("Strata is stopped" in t for _k, t in window.records)
+    pump(lambda: False, 3)                                   # a wanted stop is never reported as a crash
+    assert not any("stopped by itself" in t for _k, t in window.records)
+
+
+def test_a_server_that_disappears_is_reported(window, fake_env):
+    window.btn_start.click()
+    assert pump(lambda: window.busy is None and bool(window.sample.get("health")), 30)
+    assert pump(lambda: window.was_ready, 5)
+    subprocess.run([sys.executable, str(ROOT / "tools" / "fake_strata" / "fake_strata.py"), "launch", "--stop"], capture_output=True)   # not through the window
+    assert pump(lambda: any(k == "error" and "stopped by itself" in t for k, t in window.records), 15)
+    assert window.status_title.text() == "Stopped"
+
+
+def test_first_setup_picks_a_model_that_is_there(fake_env):
+    from strata_launcher.ui import app as ui_app
+    write_config(fake_env)
+    path = fake_env["cfg_dir"] / "config.json"
+    cfg = json.loads(path.read_text(encoding="utf-8"))
+    cfg["source"]["model"] = ""
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+    app, win = ui_app.create(["test"], single=False)
+    try:
+        assert pump(lambda: win.info.get("version") == "0.0.0")
+        assert win.model_combo.currentText() == "demo-q4" and win.dirty
+        assert command.source_problem(win.collect()["source"]) is None
+    finally:
+        win.close()
 
 
 def test_a_failed_start_says_so_and_frees_the_buttons(window, monkeypatch):
@@ -152,6 +179,18 @@ def test_start_at_sign_in_switch_writes_and_removes_the_entry(window, tmp_path, 
     assert window.row_minimized.isEnabled()
     window.sw_login.setChecked(False)
     assert not window.autostart.path.exists() and not window.row_minimized.isEnabled()
+
+
+def test_hardware_rows_keep_their_order_whatever_arrives_first(window):
+    from strata_launcher.ui.widgets import Meter
+    card_b = {"index": 1, "name": "Card B", "used": 100.0, "total": 1000.0, "util": 5.0}
+    card_a = {"index": 0, "name": "Card A", "used": 100.0, "total": 1000.0, "util": 5.0}
+    base = {"cpu_pct": 10.0, "ram_total": 32.0, "ram_avail": 20.0, "swap_total": 4.0, "swap_free": 4.0}
+    window.refresh_hardware(base, [card_b])                   # the second card and the PC's own figures arrive first
+    window.refresh_hardware(base, [card_a, card_b])
+    box = window.hw_card.box
+    titles = [box.itemAt(i).widget().title.text() for i in range(box.count()) if isinstance(box.itemAt(i).widget(), Meter)]
+    assert titles == ["Card A memory", "Card A load", "Card B memory", "Card B load", "Processor load", "RAM in use", "Swap in use"]
 
 
 def test_an_update_shows_on_the_app_tab(window):

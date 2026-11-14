@@ -117,3 +117,35 @@ def test_launch_files_from_the_run_file(tmp_path):
     assert strata.launch_files(status, 8081)["engine_log"] == str(tmp_path / "launch" / "second.engine.log")    # beside the run file
     assert strata.launch_files([], 8080) == {"engine_log": None, "model_dir": None}
     assert strata.launch_files([{"name": "x", "port": 1, "config": ""}])["engine_log"] is None
+
+
+UPDATE = {"schema_version": 1, "ok": True, "feed": {"source": "https://example.invalid/releases/latest/download", "channel": "stable"},
+          "engine": {"installed": {"version": "0.1.57", "backend": "cuda"}, "offered": {"version": "0.1.59", "size": 723498702},
+                     "status": "available", "download_bytes": 723498702, "problem": None},
+          "control": {"installed": "0.1.57", "offered": "0.1.59.1", "status": "available", "download_bytes": 100087576},
+          "app": {"installed": None, "offered": "0.2.13", "status": "unknown-installed", "download_bytes": 305326584},
+          "serving": [{"name": "office"}]}
+
+
+def test_parse_update_check_available():
+    found = strata.parse_update_check("  Reading the signed update feed\n" + json.dumps(UPDATE))
+    assert found["ok"] and found["available"] and found["serving"] == 1 and found["source"].startswith("https://example.invalid")
+    assert [(p["name"], p["installed"], p["offered"]) for p in found["parts"]] == [("Engine", "0.1.57", "0.1.59"), ("Control", "0.1.57", "0.1.59.1")]
+    assert round(found["download_mb"]) == 824                    # the desktop app's installer is not part of `strata update`
+    assert strata.update_text(found) == "A newer Strata is available: Engine 0.1.57 → 0.1.59, Control 0.1.57 → 0.1.59.1 (about 824 MB to download)."
+    assert strata.update_key(found) == "Engine=0.1.59;Control=0.1.59.1"
+
+
+def test_parse_update_check_up_to_date_and_odd_answers():
+    same = dict(UPDATE, engine={"installed": {"version": "0.1.59"}, "offered": {"version": "0.1.59"}, "status": "current", "download_bytes": 0},
+                control={"installed": "0.1.59.1", "offered": "0.1.59.1", "status": "current"}, serving=[])
+    found = strata.parse_update_check(json.dumps(same))
+    assert found["ok"] and not found["available"] and found["parts"] == [] and found["serving"] == 0
+    assert strata.update_text(found) == "Strata is up to date (engine 0.1.59, control 0.1.59.1)." and strata.update_key(found) == ""
+    held = dict(same, engine={"installed": {"version": "0.1.57"}, "offered": {"version": "0.1.59"}, "status": "blocked", "problem": "the driver is too old"})
+    found = strata.parse_update_check(json.dumps(held))
+    assert not found["available"] and found["problem"] == "the driver is too old"       # offered but not installable: no Update button
+    failed = strata.parse_update_check(json.dumps({"ok": False, "error": "the feed could not be read", "engine": {}}))
+    assert not failed["ok"] and not failed["available"] and "feed" in failed["problem"]
+    assert strata.parse_update_check("command not found") is None
+    assert strata.parse_update_check(json.dumps({"ok": True, "presets": []})) is None      # some other command's answer

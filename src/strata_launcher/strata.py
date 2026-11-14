@@ -188,6 +188,66 @@ def parse_plan(text: str) -> dict | None:
             "warnings": [str(w) for w in plan.get("warnings", []) if w], "flags": str(plan.get("flags") or "")}
 
 
+UPDATE_PARTS = (("engine", "Engine"), ("control", "Control"))
+UPDATE_REFUSED_MODEL_LOADED = 7      # exit code of `strata update --yes` while a model is loaded: nothing was changed
+UPDATE_DID_NOT_START_AGAIN = 8       # the update worked, but the model it stopped did not start again
+
+
+def _version_of(value) -> str:
+    """Strata gives a version as text or as an object with a "version" field."""
+    if isinstance(value, dict):
+        value = value.get("version")
+    return str(value) if value else ""
+
+
+def parse_update_check(text: str) -> dict | None:
+    """What `strata update --check --output json` found. None when the output is not that.
+
+    Returns {"ok", "available", "parts": [{"name", "installed", "offered", "mb"}], "installed": {...}, "download_mb",
+    "serving", "problem", "source"}. Only the engine and the Control part count: they are what `strata update` installs.
+    """
+    data = parse_json(text)
+    if not isinstance(data, dict) or not any(isinstance(data.get(key), dict) for key, _name in UPDATE_PARTS):
+        return None
+    out = {"ok": data.get("ok") is not False, "available": False, "parts": [], "installed": {}, "download_mb": 0.0,
+           "serving": len(data.get("serving") or []), "problem": "", "source": str((data.get("feed") or {}).get("source") or "")}
+    if not out["ok"]:
+        out["problem"] = str(data.get("error") or data.get("message") or "Strata could not read its update feed.")
+    for key, name in UPDATE_PARTS:
+        part = data.get(key)
+        if not isinstance(part, dict):
+            continue
+        installed, offered = _version_of(part.get("installed")), _version_of(part.get("offered"))
+        if installed:
+            out["installed"][name] = installed
+        if part.get("problem"):
+            out["problem"] = out["problem"] or str(part["problem"])
+        if part.get("status") == "available" and offered and offered != installed:
+            try:
+                mb = float(part.get("download_bytes") or 0) / 1e6
+            except (TypeError, ValueError):
+                mb = 0.0
+            out["parts"].append({"name": name, "installed": installed, "offered": offered, "mb": mb})
+            out["download_mb"] += mb
+    out["available"] = bool(out["parts"])
+    return out
+
+
+def update_text(found: dict) -> str:
+    """One line for the window: what is installed, and what a newer version would bring."""
+    if found["available"]:
+        bits = [f"{p['name']} {p['installed'] or 'none'} → {p['offered']}" for p in found["parts"]]
+        size = f" (about {found['download_mb']:,.0f} MB to download)" if found["download_mb"] >= 1 else ""
+        return "A newer Strata is available: " + ", ".join(bits) + size + "."
+    have = ", ".join(f"{name.lower()} {v}" for name, v in found["installed"].items())
+    return "Strata is up to date" + (f" ({have})." if have else ".")
+
+
+def update_key(found: dict) -> str:
+    """Names one offer, so the same one is announced only once."""
+    return ";".join(f"{p['name']}={p['offered']}" for p in found["parts"])
+
+
 def parse_key(text: str) -> str | None:
     """The API key in the output of --show-key, or None."""
     for word in (text or "").split():

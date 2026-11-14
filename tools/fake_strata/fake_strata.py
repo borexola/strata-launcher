@@ -10,13 +10,17 @@ nothing and uses no graphics card. It answers the few commands the launcher runs
   strata launch --stop
   strata launch <choices> --plan --output json
   strata launch <choices> --save-preset NAME --restart --yes --no-tui     (starts stub_server.py and returns)
+  strata update --check --output json
+  strata update --yes [--stop-model] [--start-again]
 
 Its files (what is "serving", saved presets, the engine log) live in the folder FAKE_STRATA_HOME names, or in a
 folder called fake-strata in the system's temporary folder.
 
 Environment switches for tests: FAKE_STRATA_LOAD_S (pretend loading time, default 1.5), FAKE_STRATA_FAIL=1 (the
 start fails), FAKE_STRATA_HELPER=1 (pretend two cards), FAKE_STRATA_SEED (finished answers to begin with),
-FAKE_STRATA_HOLD (keep the server in one phase), FAKE_STRATA_STARTED (the start time written to the engine log).
+FAKE_STRATA_OFFER (a newer engine version that
+`strata update` offers, for example 0.0.2; without it Strata is up to date), FAKE_STRATA_UPDATE_FAIL=1 (the update
+fails), FAKE_STRATA_HOLD (keep the server in one phase), FAKE_STRATA_STARTED (the start time written to the engine log).
 """
 
 from __future__ import annotations
@@ -238,7 +242,7 @@ def cmd_launch(args: list[str]) -> int:
         return 1
     runs = [r for r in running() if r["port"] != port]
     runs.append({"name": run_name, "pid": p.pid, "port": port, "host": "127.0.0.1" if c["access"] == "local" else "0.0.0.0",
-                 "config": str(config), "key": key})
+                 "config": str(config), "key": key, "server": server})
     write(home() / "running.json", runs)
     if flag(args, "--save-preset"):
         presets = [q for q in read(home() / "presets.json", [SEED_PRESET]) if q["name"] != name]
@@ -249,6 +253,65 @@ def cmd_launch(args: list[str]) -> int:
     print(f"Serving at http://127.0.0.1:{port}")
     if key:
         print(f"API key: {key}")
+    return 0
+
+
+def cmd_update(args: list[str]) -> int:
+    """A stand-in for Strata's own updater. The "installed version" is a line in a file; nothing is downloaded."""
+    versions = read(home() / "versions.json", {"engine": "0.0.0", "control": "0.0.0"})
+    offer = os.environ.get("FAKE_STRATA_OFFER") or versions["engine"]
+    newer = offer != versions["engine"]
+    runs = running()
+    if "--check" in args:
+        part = {"installed": {"version": versions["engine"]}, "offered": {"version": offer}, "status": "available" if newer else "current",
+                "download_bytes": 150_000_000 if newer else 0, "problem": None}
+        control = {"installed": versions["control"], "offered": offer if newer else versions["control"], "status": "available" if newer else "current",
+                   "download_bytes": 20_000_000 if newer else 0}
+        answer = {"schema_version": 1, "ok": True, "feed": {"source": "https://stand-in.invalid/feed", "channel": "stable"},
+                  "engine": part, "control": control, "serving": [{"name": r["name"]} for r in runs]}
+        if flag(args, "--output") == "json" or "--json" in args:
+            print(json.dumps(answer))
+        else:
+            print(f"Engine   update available: {versions['engine']} -> {offer}" if newer else f"Engine   {versions['engine']} is the newest")
+        return 0
+    if not newer:
+        print("Nothing to update.")
+        return 0
+    if runs and "--stop-model" not in args:
+        print(f"{runs[0]['name']} is loaded. Add --stop-model to let the update stop it. Nothing was changed.")
+        return 7
+    print(f"Downloading engine {offer} (150 MB) ...")
+    for r in runs:
+        print(f"Stopping {r['name']} for the update ...")
+        kill(r["pid"])
+    write(home() / "running.json", [])
+    time.sleep(float(os.environ.get("FAKE_STRATA_LOAD_S", "1.5")))
+    if os.environ.get("FAKE_STRATA_UPDATE_FAIL"):
+        print("error: the new engine failed its test start (this failure is pretended, for a test). The old engine stays in use.")
+        return 1
+    write(home() / "versions.json", {"engine": offer, "control": offer})
+    print(f"Test start of engine {offer}: ok. Switched to it.")
+    if runs and "--start-again" in args:
+        again = []
+        for r in runs:
+            if not r.get("server"):
+                continue
+            quiet = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+            if os.name == "nt":
+                p = subprocess.Popen(r["server"], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW, **quiet)
+            else:
+                p = subprocess.Popen(r["server"], start_new_session=True, **quiet)
+            for _ in range(100):
+                if healthy(r["port"]):
+                    break
+                time.sleep(0.1)
+            else:
+                print(f"error: {r['name']} did not start again")
+                return 8
+            again.append(dict(r, pid=p.pid))
+            print(f"Started {r['name']} again with the same settings.")
+        write(home() / "running.json", again)
+    print("Updated.")
     return 0
 
 
@@ -265,6 +328,8 @@ def main(argv=None) -> int:
         return 0
     if args[0] == "launch":
         return cmd_launch(args[1:])
+    if args[0] == "update":
+        return cmd_update(args[1:])
     print(f"The stand-in does not know the command: {' '.join(args)}")
     return 2
 

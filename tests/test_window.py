@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent
 def write_config(env, **extra):
     env["cfg_dir"].mkdir(parents=True, exist_ok=True)
     cfg = {"version": 2, "strata_command": env["strata"], "source": {"kind": "model", "model": "demo-q4"},
-           "values": {"port": env["port"], "context": "32k", "parallel": "2"}, "check_updates": False, "nvidia_smi": "off"}
+           "values": {"port": env["port"], "context": "32k", "parallel": "2"}, "check_updates": False, "check_strata_updates": False,
+           "nvidia_smi": "off"}
     cfg.update(extra)
     (env["cfg_dir"] / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
 
@@ -266,3 +267,108 @@ def test_old_downloads_are_tidied_but_fresh_ones_and_other_files_stay(tmp_path):
         os.utime(path, (now - age, now - age))
     assert tidy_temp(now, str(tmp_path)) == 2
     assert sorted(p.name for p in tmp_path.iterdir()) == ["someone-elses-file.out", "strata-launcher-def.out", "strata-launcher-update-new"]
+
+
+def versions(env):
+    path = env["fake_home"] / "versions.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"engine": "0.0.0", "control": "0.0.0"}
+
+
+def answer(monkeypatch, reply):
+    """Answers the launcher's yes/no questions without a person. Returns the list of questions asked."""
+    from PySide6.QtWidgets import QMessageBox
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: asked.append(a[2]) or reply)
+    return asked
+
+
+def test_strata_update_check_says_up_to_date(window):
+    assert window.btn_strata_update.isHidden()
+    window.btn_strata_check.click()
+    assert pump(lambda: window.strata_found is not None)
+    assert "up to date" in window.strata_update_label.text() and window.btn_strata_update.isHidden()
+    assert window.tabs.tabText(3) == "Setup"
+
+
+def test_strata_update_is_offered_and_never_runs_without_a_yes(window, fake_env, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setenv("FAKE_STRATA_OFFER", "0.0.2")
+    window.btn_strata_check.click()
+    assert pump(lambda: window.strata_found is not None)
+    assert "Engine 0.0.0 → 0.0.2" in window.strata_update_label.text() and not window.btn_strata_update.isHidden()
+    assert window.tabs.tabText(3) != "Setup" and any("newer Strata is available" in t for _k, t in window.records)
+    asked = answer(monkeypatch, QMessageBox.No)
+    spawned = window.runner.spawned
+    window.btn_strata_update.click()
+    assert len(asked) == 1 and "signed update feed" in asked[0] and "A model is loaded" not in asked[0]
+    assert window.busy is None and window.runner.spawned == spawned and versions(fake_env)["engine"] == "0.0.0"
+    assert any("was not updated" in t for _k, t in window.records)
+
+
+def test_strata_update_with_no_model_loaded(window, fake_env, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setenv("FAKE_STRATA_OFFER", "0.0.2")
+    window.btn_strata_check.click()
+    assert pump(lambda: window.strata_found is not None)
+    answer(monkeypatch, QMessageBox.Yes)
+    window.btn_strata_update.click()
+    assert window.busy == "Updating Strata…" and not window.btn_start.isEnabled()
+    assert pump(lambda: window.busy is None, 30)
+    assert versions(fake_env) == {"engine": "0.0.2", "control": "0.0.2"}
+    assert any(k == "launcher" and "Strata is updated." in t for k, t in window.records)
+    assert pump(lambda: "up to date" in window.strata_update_label.text(), 10) and window.btn_strata_update.isHidden()
+    assert window.tabs.tabText(3) == "Setup"
+    log = (fake_env["cfg_dir"] / "logs" / "launcher.log").read_text(encoding="utf-8")
+    assert "update --yes" in log and "--stop-model" not in log
+
+
+def test_strata_update_stops_a_loaded_model_only_after_a_yes_and_starts_it_again(window, fake_env, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setenv("FAKE_STRATA_OFFER", "0.0.2")
+    window.btn_start.click()
+    assert pump(lambda: window.busy is None and bool(window.sample.get("health")), 30)
+    window.btn_strata_check.click()
+    assert pump(lambda: window.strata_found is not None and window.strata_found["serving"] == 1)
+    asked = answer(monkeypatch, QMessageBox.Yes)
+    window.btn_strata_update.click()
+    assert "A model is loaded" in asked[0] and "starts it again" in asked[0]
+    assert pump(lambda: window.busy is None, 40)
+    assert versions(fake_env)["engine"] == "0.0.2"
+    assert pump(lambda: bool(window.sample.get("health")), 15)                 # the model answers again
+    log = (fake_env["cfg_dir"] / "logs" / "launcher.log").read_text(encoding="utf-8")
+    assert "--stop-model --start-again" in log
+    pump(lambda: False, 3)
+    assert not any("stopped by itself" in t for _k, t in window.records)     # a wanted stop for an update is not a crash
+
+
+def test_a_failed_strata_update_says_so_and_keeps_the_offer(window, fake_env, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setenv("FAKE_STRATA_OFFER", "0.0.2")
+    monkeypatch.setenv("FAKE_STRATA_UPDATE_FAIL", "1")
+    window.btn_strata_check.click()
+    assert pump(lambda: window.strata_found is not None)
+    answer(monkeypatch, QMessageBox.Yes)
+    window.btn_strata_update.click()
+    assert pump(lambda: window.busy is None, 30)
+    assert versions(fake_env)["engine"] == "0.0.0"
+    assert any(k == "error" and "did not update" in t for k, t in window.records)
+    assert pump(lambda: not window.btn_strata_update.isHidden() and window.btn_strata_update.isEnabled(), 10)
+
+
+def test_strata_updates_are_looked_for_once_a_day_when_switched_on(fake_env, monkeypatch):
+    from strata_launcher.ui import app as ui_app
+    monkeypatch.setenv("FAKE_STRATA_OFFER", "0.0.3")
+    write_config(fake_env, check_strata_updates=True)
+    app, win = ui_app.create(["test"], single=False)
+    try:
+        assert pump(lambda: win.strata_found is not None, 20)                  # nobody pressed anything
+        assert win.strata_found["available"] and not win.btn_strata_update.isHidden()
+        saved, _notes, _existed = config.load(fake_env["cfg_dir"] / "config.json")
+        assert saved["last_strata_check"] > 0 and saved["strata_update_seen"] == "Engine=0.0.3;Control=0.0.3"
+        spawned = win.runner.spawned
+        win.load_info()                                                        # a second look the same day asks nothing
+        assert pump(lambda: win.info.get("version") == "0.0.0")
+        pump(lambda: False, 1)
+        assert win.runner.spawned == spawned + 3
+    finally:
+        win.close()

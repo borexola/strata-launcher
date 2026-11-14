@@ -96,3 +96,10 @@ def test_other_commands_and_printing():
     assert command.status_command(c)[1:] == ["launch", "--status", "--output", "json"]
     assert command.key_command(c)[1:] == ["launch", "--show-key"]
     assert command.printable(command.stop_command(c)) == '"/opt/my strata/bin/strata" launch --stop'
+
+
+def test_strata_update_commands():
+    c = {"strata_command": "strata"}
+    assert command.update_check_command(c) == ["strata", "update", "--check", "--output", "json"]
+    assert command.update_command(c) == ["strata", "update", "--yes"]                       # never stops a model by itself
+    assert command.update_command(c, stop_model=True) == ["strata", "update", "--yes", "--stop-model", "--start-again"]

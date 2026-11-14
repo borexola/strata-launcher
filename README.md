@@ -24,7 +24,8 @@ The pictures use a stand-in for Strata. Every name and number in them is made up
 - **Log**: Strata's messages in plain words and in colour. API keys are never shown.
 - **Setup**: where Strata is, which model or saved preset to start, and the exact command Start runs.
 - **App**: open at sign-in (off by default), update check, light or dark colours.
-- It asks you before a start that would download a model.
+- **Strata updates**: it looks once a day for a newer Strata and can run Strata's own updater for you.
+- It asks you before a start that would download a model, and before any update.
 
 ## Install
 
@@ -69,13 +70,17 @@ A setting left on **Strata's default** adds no flag, so Strata decides.
 
 ## Update and uninstall
 
-- **Update, Windows:** the App tab shows **Download and install** when there is a new version. Your settings stay.
-- **Update, Linux:** download the new version and run its `install.sh` again.
+- **Update Strata itself:** on the Setup tab, **Check for Strata updates** asks Strata's own updater
+  (`strata update --check`). If there is a newer engine, **Update Strata…** runs `strata update` after you say yes.
+  Strata downloads from its own signed feed and keeps the old version if the new one fails its test start. A loaded
+  model is only stopped if you agree, and Strata starts it again afterwards.
+- **Update the launcher, Windows:** the App tab shows **Download and install** when there is a new version. Your settings stay.
+- **Update the launcher, Linux:** download the new version and run its `install.sh` again.
 - **Uninstall, Windows:** Settings → Apps → Strata Launcher → Uninstall.
 - **Uninstall, Linux:** `./uninstall.sh` (add `--settings` to remove your settings too).
 
-The update check is one request to GitHub for this project's latest release. Nothing about you or your PC is sent.
-You can switch it off on the App tab. Strata, its models and a running server are never touched.
+The launcher's own update check is one request to GitHub for this project's latest release. Nothing about you or
+your PC is sent. Both daily checks can be switched off on the App tab. Strata, its models and a running server are never touched.
 
 ## Where your files are
 
@@ -93,6 +98,7 @@ or hide settings in your own `options.json`. See [docs/CUSTOMIZE.md](docs/CUSTOM
 ## Limits
 
 - On Windows it was tested end to end against a stand-in for Strata, not with a real Strata.
+- Updating Strata was tested against the stand-in. With a real Strata only the check was tried, not an update.
 - Graphics cards are read with NVIDIA's `nvidia-smi`. Without it the window shows the one card Strata reports, and
   only while Strata runs.
 - The plain sentences in the Log follow the wording of Strata engine 0.1.x. Other lines still show under

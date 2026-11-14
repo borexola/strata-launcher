@@ -94,6 +94,17 @@ def status_command(cfg: dict) -> list[str]:
     return [cfg["strata_command"], "launch", "--status", "--output", "json"]
 
 
+def update_check_command(cfg: dict) -> list[str]:
+    """Asks Strata's own updater what it would change. It only reads Strata's signed update feed."""
+    return [cfg["strata_command"], "update", "--check", "--output", "json"]
+
+
+def update_command(cfg: dict, stop_model: bool = False) -> list[str]:
+    """Runs Strata's own updater. It asks nothing. A loaded model is only stopped (and started again with the same
+    settings afterwards) when stop_model is true; without it Strata refuses to update while a model is loaded."""
+    return [cfg["strata_command"], "update", "--yes"] + (["--stop-model", "--start-again"] if stop_model else [])
+
+
 def key_command(cfg: dict) -> list[str]:
     return [cfg["strata_command"], "launch", "--show-key"]
 

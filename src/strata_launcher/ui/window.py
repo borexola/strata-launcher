@@ -58,6 +58,7 @@ class Bridge(QObject):
     update = Signal(dict)            # the result of an update check
     key = Signal(str)                # the API key, for the clipboard
     fetched = Signal(str, str)       # (path of a downloaded update, error text)
+    strata_update = Signal(object, bool)    # (what Strata's updater found or None, asked by hand)
 
 
 def scroll(inner: QWidget) -> QScrollArea:
@@ -102,6 +103,7 @@ class MainWindow(QMainWindow):
         self.shown_sub = None
         self.info: dict = {"version": None, "models": [], "presets": []}
         self.update_info: dict | None = None
+        self.strata_found: dict | None = None                # what Strata's own updater last reported
         self.checking = False
         self.start_wanted = at_login and cfg.get("start_server_at_login")
         self.colours = theme.colours(cfg.get("theme", "system"))
@@ -406,6 +408,21 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(0, 0, 0, 0)
         card1.add(holder)
         card1.add(self.strata_note, divider=False)
+        self.strata_update_label = label("Strata's own updater has not been asked yet.", "", wrap=True)
+        self.btn_strata_check = QPushButton("Check for Strata updates")
+        self.btn_strata_check.setToolTip("Asks Strata's own updater. It only reads Strata's signed update feed; nothing is changed.")
+        self.btn_strata_update = QPushButton("Update Strata…")
+        self.btn_strata_update.setObjectName("primary")
+        self.btn_strata_update.setToolTip("Runs Strata's own updater (strata update). You are asked first.")
+        self.btn_strata_update.setVisible(False)
+        sr = QHBoxLayout()
+        sr.setContentsMargins(0, 0, 0, 0)
+        sr.addWidget(self.strata_update_label, 1)
+        sr.addWidget(self.btn_strata_update)
+        sr.addWidget(self.btn_strata_check)
+        sh = QWidget()
+        sh.setLayout(sr)
+        card1.add(sh)
 
         # what to start
         card2 = Card("What to start", "Pick one. The lists are read from your Strata.")
@@ -541,6 +558,10 @@ class MainWindow(QMainWindow):
         self.sw_updates = Switch()
         self.sw_updates.setChecked(bool(self.cfg.get("check_updates", True)))
         card2.add_row("Look for a new version once a day", "It asks GitHub for this project's latest release. Nothing about you or your PC is sent.", self.sw_updates)
+        self.sw_strata_updates = Switch()
+        self.sw_strata_updates.setChecked(bool(self.cfg.get("check_strata_updates", True)))
+        card2.add_row("Look for a new Strata version once a day", "It runs Strata's own check (strata update --check), which reads Strata's signed update feed. "
+                      "Updating itself is a button on the Setup tab and always asks first.", self.sw_strata_updates)
         self.update_label = label(f"You have version {__version__}.", "", wrap=True, rich=True)
         self.update_label.setOpenExternalLinks(True)
         self.btn_check = QPushButton("Check now")
@@ -600,6 +621,7 @@ class MainWindow(QMainWindow):
         b.update.connect(self.on_update)
         b.key.connect(self.on_key_ready)
         b.fetched.connect(self.on_fetched)
+        b.strata_update.connect(self.on_strata_checked)
         self.btn_save.clicked.connect(self.on_save)
         self.btn_start.clicked.connect(self.on_start)
         self.btn_stop.clicked.connect(self.on_stop)
@@ -615,6 +637,9 @@ class MainWindow(QMainWindow):
         self.btn_choose.clicked.connect(self.on_choose)
         self.btn_find.clicked.connect(self.on_find)
         self.btn_reload.clicked.connect(self.load_info)
+        self.btn_strata_check.clicked.connect(lambda: self.check_strata_update(True))
+        self.btn_strata_update.clicked.connect(self.on_update_strata)
+        self.sw_strata_updates.toggled.connect(lambda v: self.set_pref("check_strata_updates", v))
         self.kind_group.idClicked.connect(self.on_kind)
         for w in (self.family_edit, self.files_edit, self.data_edit, self.name_edit, self.extra_edit):
             w.textChanged.connect(self.changed)
@@ -787,6 +812,9 @@ class MainWindow(QMainWindow):
             return
         self.strata_edit.setText(cmd)
         self.cfg["strata_command"] = cmd
+        self.strata_found = None                             # another Strata: ask its updater afresh
+        self.btn_strata_update.setVisible(False)
+        self.strata_update_label.setText("Strata's own updater has not been asked yet.")
         self.save_cfg()
         self.push_target()
         self.say(f"Using Strata at {cmd}")
@@ -846,6 +874,9 @@ class MainWindow(QMainWindow):
         self.preset_combo.setEditText(preset)
         self.loading = False
         self.refresh_strata_note()
+        if info.get("version") and self.strata_found is None and self.cfg.get("check_strata_updates", True) \
+                and time.time() - float(self.cfg.get("last_strata_check") or 0) >= updates.DAY:
+            self.check_strata_update(False)
         if info["models"] and not model and not preset and not self.files_edit.text() and self.kind_group.checkedId() == 0:
             self.model_combo.setEditText(info["models"][0]["id"])      # a first setup: start from a model that is there
             self.say(f"Strata has the model {info['models'][0]['id']} set up, so it is chosen. You can change it on the Setup tab.")
@@ -997,6 +1028,82 @@ class MainWindow(QMainWindow):
             return
         QTimer.singleShot(300, QApplication.instance().quit)
 
+    # ----- updating Strata itself, with Strata's own updater -----
+    def check_strata_update(self, by_hand: bool):
+        """Asks `strata update --check` in a background thread: one short program, never two at once."""
+        cfg = dict(self.cfg)
+        if not cfg.get("strata_command"):
+            return
+        if by_hand:
+            self.strata_update_label.setText("Asking Strata's updater…")
+
+        def work():
+            try:
+                _code, out = self.runner.capture(command.update_check_command(cfg), timeout=180, job="strata-update-check")
+            except Busy:
+                return
+            self.bridge.strata_update.emit(strata.parse_update_check(out), by_hand)
+        threading.Thread(target=work, daemon=True, name="strata-update-check").start()
+
+    def on_strata_checked(self, found, by_hand: bool):
+        self.cfg["last_strata_check"] = int(time.time())
+        self.strata_found = found
+        setup = TABS.index("setup")
+        if found is None or not found["ok"]:
+            why = (found or {}).get("problem") or "Strata's updater gave no answer. Is this PC online?"
+            self.strata_update_label.setText(why)
+            self.btn_strata_update.setVisible(False)
+            self.tabs.setTabText(setup, "Setup")
+            if by_hand:
+                self.say(why, "warn")
+            self.save_cfg()
+            return
+        self.strata_update_label.setText(strata.update_text(found) + (f" Strata says: {found['problem']}" if found["problem"] else ""))
+        self.btn_strata_update.setVisible(found["available"])
+        self.tabs.setTabText(setup, "Setup  •" if found["available"] else "Setup")
+        if found["available"] and (by_hand or strata.update_key(found) != self.cfg.get("strata_update_seen")):
+            self.say(strata.update_text(found) + " See the Setup tab.")
+            self.cfg["strata_update_seen"] = strata.update_key(found)
+        elif by_hand:
+            self.say(strata.update_text(found))
+        self.save_cfg()
+
+    def on_update_strata(self, *_):
+        """Runs Strata's own updater after a yes. A running model is only stopped when the person agrees to that too."""
+        found = self.strata_found
+        if self.busy is not None or not found or not found["available"] or not self.cfg.get("strata_command"):
+            return
+        loaded = self.running or found["serving"] > 0
+        text = (strata.update_text(found) + "\n\nStrata's own updater downloads it from Strata's signed update feed"
+                + (f" ({found['source']})" if found["source"] else "") + ", checks it, and switches only after a test start. "
+                "If the update fails, the old version stays in use.")
+        if loaded:
+            text += ("\n\nA model is loaded. It must be stopped for the update: answers in progress stop. "
+                     "Strata starts it again afterwards with the same settings.")
+        text += "\n\nUpdate Strata now?"
+        if QMessageBox.question(self, APP_NAME, text, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            self.say("Strata was not updated.")
+            return
+        cfg = dict(self.cfg)
+        self.was_ready = False
+        self.say("Updating Strata with its own updater. Its messages follow.")
+
+        def work():
+            cmd = command.update_command(cfg, stop_model=loaded)
+            if cfg.get("own_scope", True):                   # a model started again by the updater gets its own scope too
+                cmd = own_scope(cmd, runner=self.runner)
+            code = self.runner.stream(cmd, self.say_launch, job="launch")
+            self.sampler.nudge()
+            self.bridge.strata_update.emit(strata.parse_update_check(self.runner.capture(command.update_check_command(cfg), timeout=180)[1]), False)
+            if code == 0:
+                return True, "Strata is updated."
+            if code == strata.UPDATE_REFUSED_MODEL_LOADED:
+                return False, "Strata did not update because a model is loaded. Nothing was changed. Stop the model and try again."
+            if code == strata.UPDATE_DID_NOT_START_AGAIN:
+                return False, "Strata is updated, but the model did not start again. Press Start."
+            return False, f"Strata did not update. Strata keeps the old version in use. Its messages are in the Log tab and in {paths.log_file()}"
+        self.action("Updating Strata…", work)
+
     # ------------------------------------------------------------------ Save, Start, Stop
     def refresh_buttons(self):
         busy = self.busy is not None
@@ -1008,6 +1115,8 @@ class MainWindow(QMainWindow):
         h = self.sample.get("health") or {}
         self.btn_key.setVisible(bool(h.get("api_key")))
         self.btn_plan.setEnabled(not busy)
+        self.btn_strata_update.setEnabled(not busy)
+        self.btn_strata_check.setEnabled(not busy and bool(self.cfg.get("strata_command")))
 
     def on_save(self, *_):
         self.cfg = self.collect()
@@ -1060,6 +1169,8 @@ class MainWindow(QMainWindow):
         if message:
             self.say(message, "launcher" if ok else "error")
         self.show_status()
+        if name.startswith("Updating"):
+            self.load_info()                                 # the version line on the Setup tab
         if not self.isActiveWindow():
             QApplication.alert(self)
 
@@ -1208,7 +1319,9 @@ class MainWindow(QMainWindow):
         self.running = now_running
         url, c = self.url(), self.colours
         if self.busy:
-            title, sub, colour = self.busy, "Please wait. Loading a model can take a minute or more.", c["warning"]
+            waiting = ("Strata is downloading and testing its new version. This can take several minutes."
+                       if self.busy.startswith("Updating") else "Please wait. Loading a model can take a minute or more.")
+            title, sub, colour = self.busy, waiting, c["warning"]
         elif state["kind"] in ("idle", "busy"):
             title = (state["phase"].capitalize() + "…") if state["kind"] == "busy" else "Running"
             sub = f'{html.escape(state["model"])} at <a href="{html.escape(url)}/" style="color:{c["accent"]}">{html.escape(url)}</a>'

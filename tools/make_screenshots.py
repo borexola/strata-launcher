@@ -5,9 +5,10 @@ Every figure, name and path in the pictures is made up: the server is tools/fake
 from its stand-in nvidia-smi, and the PC's memory and processor figures come from DemoProbe below. Nothing is read
 from the computer the pictures are made on.
 
-    python tools/make_screenshots.py OUT_FOLDER [--theme light|dark] [--suffix -dark]
+    python tools/make_screenshots.py OUT_FOLDER [--theme light|dark] [--suffix=-dark] [--tabs settings,performance,log] [--max-height 1200]
 
-On Linux without a screen: QT_QPA_PLATFORM=offscreen python tools/make_screenshots.py docs/screenshots
+The README's pictures, on Linux without a screen:
+    QT_QPA_PLATFORM=offscreen python tools/make_screenshots.py docs/screenshots --theme dark --tabs settings,performance,log --max-height 1130
 """
 
 from __future__ import annotations
@@ -48,6 +49,8 @@ def main() -> int:
     ap.add_argument("--theme", default="light", choices=("light", "dark"))
     ap.add_argument("--suffix", default="")
     ap.add_argument("--width", type=int, default=1000)
+    ap.add_argument("--max-height", type=int, default=0, help="never make a picture taller than this (a long tab is then cut off at the bottom)")
+    ap.add_argument("--tabs", default="", help="only these tabs, for example settings,performance,log")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -76,6 +79,7 @@ def main() -> int:
         app, win = ui_app.create([sys.argv[0]], single=False, probe=DemoProbe())
         shown = "C:\\Users\\you\\AppData\\Local\\Strata\\terminal\\current\\bin\\strata.cmd" if os.name == "nt" else "/home/you/.local/bin/strata"
         state = {"tab": 0, "t": time.time(), "ready": False}
+        wanted = [t for t in a.tabs.split(",") if t]
 
         def tick():
             now = time.time()
@@ -111,8 +115,15 @@ def main() -> int:
                     app.quit()
                 return
             name = TABS[state["tab"]]
+            if wanted and name not in wanted:
+                state["tab"] += 1
+                if state["tab"] >= len(TABS):
+                    timer.stop()
+                    win.close()
+                    app.quit()
+                return
             win.tabs.setCurrentIndex(state["tab"])
-            win.resize(a.width, HEIGHTS[name])
+            win.resize(a.width, min(HEIGHTS[name], a.max_height) if a.max_height else HEIGHTS[name])
             state["grab"] = True
             state["t"] = now
 

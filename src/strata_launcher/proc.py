@@ -42,6 +42,45 @@ def own_scope(cmd: list[str], which=shutil.which) -> list[str]:
     return cmd
 
 
+_spawn_lock = threading.Lock()
+
+
+def clean_frozen_environment() -> None:
+    """Linux, packaged program only: give the programs we start the library path the person's system had.
+
+    The packaged program runs with LD_LIBRARY_PATH pointing into its own folder. Strata and the web browser must
+    not inherit that, or they would load this program's copies of system libraries instead of their own.
+    Changing the variable here does not affect the launcher itself: its libraries are loaded already.
+    """
+    if not getattr(sys, "frozen", False) or not sys.platform.startswith("linux"):
+        return
+    original = os.environ.get("LD_LIBRARY_PATH_ORIG")
+    if original is not None:
+        os.environ["LD_LIBRARY_PATH"] = original
+    else:
+        os.environ.pop("LD_LIBRARY_PATH", None)
+
+
+def popen(cmd: list[str], **kwargs) -> subprocess.Popen:
+    """subprocess.Popen for every program the launcher starts.
+
+    Windows, packaged program only: the packaged program tells Windows to look for DLLs in its own folder first, and
+    a program started from it would inherit that. So for the moment of the start the setting is taken away, and the
+    started program (Strata, with its own Python) finds its own DLLs.
+    """
+    kwargs.setdefault("creationflags", no_window_flags())
+    if not (getattr(sys, "frozen", False) and sys.platform.startswith("win")):
+        return subprocess.Popen(cmd, **kwargs)
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    with _spawn_lock:
+        kernel32.SetDllDirectoryW(None)
+        try:
+            return subprocess.Popen(cmd, **kwargs)
+        finally:
+            kernel32.SetDllDirectoryW(getattr(sys, "_MEIPASS", None))
+
+
 def decode(data: bytes) -> str:
     """Program output as text: UTF-8 when it is that, else the system's own encoding, never an error."""
     try:
@@ -98,8 +137,7 @@ class Runner:
         try:
             with os.fdopen(fd, "wb") as out:
                 try:
-                    p = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                         creationflags=no_window_flags())
+                    p = popen(cmd, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
                 except OSError as e:
                     return -2, str(e)
             started, rest, code = time.time(), b"", None

@@ -32,7 +32,7 @@ import psutil
 from . import command, strata
 from .enginelog import Facts, Tail, summarise
 from .metrics import answers_from_requests, short_gpu
-from .proc import Busy, Runner, no_window_flags
+from .proc import Busy, Runner, popen
 
 GPU_QUERY = "index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw"
 ENGINE_NAMES = ("strata-host", "strata-host.exe")
@@ -131,7 +131,10 @@ class GpuWatch:
         exe = self.program or shutil.which("nvidia-smi")
         if not exe:
             return None
-        head = [sys.executable, exe] if exe.endswith(".py") else [exe]      # a stand-in written in Python (tests)
+        head = [exe]
+        if exe.endswith(".py"):                              # a stand-in written in Python (tests only)
+            python = os.environ.get("FAKE_STRATA_PYTHON") or ("python" if getattr(sys, "frozen", False) else sys.executable)
+            head = [python, exe]
         return head + [f"--query-gpu={GPU_QUERY}", "--format=csv,noheader,nounits", "-l", "1"]
 
     def start(self):
@@ -178,9 +181,8 @@ class GpuWatch:
             try:
                 with self.runner._lock:
                     self.runner.spawned += 1
-                self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-                                             text=True, creationflags=no_window_flags(),
-                                             preexec_fn=_tie_to_parent_linux if sys.platform.startswith("linux") else None)
+                self.proc = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, text=True,
+                                  preexec_fn=_tie_to_parent_linux if sys.platform.startswith("linux") else None)
                 if sys.platform.startswith("win"):
                     self.job = _tie_to_parent_windows(self.proc)
                 for row in self.proc.stdout:

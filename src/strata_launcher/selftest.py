@@ -22,8 +22,10 @@ from .proc import Runner
 
 MOST_PROGRAMS_AT_ONCE = 3        # for example: the long-running card reader, one strata command, one status question
 MOST_STARTED = 16                # every program the whole test may start, counted in proc.Runner
-MOST_THREADS = 30
-MOST_CHILDREN = 10
+# Emergency limits: far above anything a healthy run reaches, far below what freezes a PC. Above them the test ends
+# the launcher at once. (One strata command is several processes on Windows: cmd, a console host, Python twice.)
+MOST_THREADS = 40
+MOST_CHILDREN = 40
 
 
 def run(seconds: float = 6.0) -> int:

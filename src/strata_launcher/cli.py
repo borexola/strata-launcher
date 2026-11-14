@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from . import APP_NAME, __version__, command, config, options, strata
-from .proc import Runner
+from .proc import Runner, clean_frozen_environment
 
 
 def parser() -> argparse.ArgumentParser:
@@ -43,6 +43,7 @@ def _need_strata(cfg) -> bool:
 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    clean_frozen_environment()
     args = parser().parse_args(argv)
     if args.version:
         print(f"{APP_NAME} {__version__}")

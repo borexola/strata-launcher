@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 
 from .. import APP_NAME, GITHUB_REPO, STRATA_URL, __version__, autostart, command, config, options, paths, repo_is_set, strata, updates
 from ..metrics import cards, live_state, memory_picture, plural
-from ..proc import Busy, Runner, own_scope, redact
+from ..proc import Busy, Runner, own_scope, popen, redact
 from ..sampler import GpuWatch, Sampler, http_json
 from . import theme
 from .widgets import Card, Dot, Meter, NoWheel, Row, SegmentBar, SpeedChart, Switch, Tile, label
@@ -980,8 +980,8 @@ class MainWindow(QMainWindow):
             return
         self.say("Installing the new version. The launcher closes and opens again. Strata keeps running.")
         try:
-            subprocess.Popen(["msiexec", "/i", path, "/passive", "/norestart", "LAUNCHAPP=1"],
-                             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            popen(["msiexec", "/i", path, "/passive", "/norestart", "LAUNCHAPP=1"],
+                  creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
         except OSError as e:
             self.say(f"The installer could not be started: {e}", "error")
             return

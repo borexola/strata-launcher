@@ -185,7 +185,9 @@ def summarise(answers: list[dict]) -> dict | None:
 
 
 def _lines(data: bytes) -> list[str]:
-    return [ln for ln in data.decode("utf-8", "replace").replace("\x00", "").split("\n") if ln.strip() and "sk-strata-" not in ln]
+    """Whole lines of a piece of the log. Windows line ends and stray zero bytes are dropped; lines with an API key are left out."""
+    text = data.decode("utf-8", "replace").replace("\x00", "").replace("\r", "")
+    return [ln for ln in text.split("\n") if ln.strip() and "sk-strata-" not in ln]
 
 
 def read_run(path: str, perf: Perf, limit: int = 4 * 2**20) -> tuple[list[tuple[str, str]], int | None]:

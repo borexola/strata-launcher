@@ -106,6 +106,15 @@ def test_key_lines_never_reach_the_window(tmp_path):
     assert not any("sk-strata-" in t for _k, t in recs) and "answer" in kinds(recs)
 
 
+def test_windows_line_ends_are_handled(tmp_path):
+    log = tmp_path / "x.engine.log"
+    log.write_bytes((START + "\r\n" + ANSWER + "\r\n").encode())
+    perf = Perf()
+    recs, pos = read_run(str(log), perf)
+    assert kinds(recs) == ["start", "detail", "answer", "detail"] and not any("\r" in t for _k, t in recs)
+    assert perf.context == 65536 and pos == log.stat().st_size
+
+
 def test_tail_follows_added_lines_and_a_replaced_file(tmp_path):
     log = tmp_path / "x.engine.log"
     log.write_text(START + "\n", encoding="utf-8")

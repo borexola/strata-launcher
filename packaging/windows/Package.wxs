@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Windows installer (WiX Toolset 5). Built by packaging\windows\build.ps1.
+
+  What it does, and nothing else:
+    - installs for the signed-in person only, into %LOCALAPPDATA%\Programs\Strata Launcher. No administrator rights.
+    - adds one Start menu entry.
+    - a newer version replaces an older one (MajorUpgrade); settings in %APPDATA%\Strata Launcher are never touched.
+    - uninstall removes the program folder, the Start menu entry and the start-at-sign-in entry the launcher may have made.
+
+  The UpgradeCode below must never change: it is how Windows knows a new version belongs to the same program.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Strata Launcher" Manufacturer="Strata Launcher contributors" Version="$(var.Version)"
+           UpgradeCode="2D706F1D-3CB5-408D-B9F8-D4283B197926" Scope="perUser" Compressed="yes" InstallerVersion="500">
+    <SummaryInformation Description="Strata Launcher $(var.Version): a window to set up, start, stop and watch a Strata server" />
+    <MajorUpgrade Schedule="afterInstallValidate" DowngradeErrorMessage="A newer version of Strata Launcher is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon.ico" SourceFile="$(var.IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <?ifdef ProjectUrl?>
+    <Property Id="ARPURLINFOABOUT" Value="$(var.ProjectUrl)" />
+    <?endif?>
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Strata Launcher" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="Strata Launcher" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuEntry" />
+    </Feature>
+
+    <!-- Every file of the packaged program, as PyInstaller made it. -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.SourceDir)\**" />
+    </ComponentGroup>
+
+    <Component Id="StartMenuEntry" Directory="ProgramMenuFolder" Guid="76E6C802-71E1-4603-B304-A605EA482510">
+      <Shortcut Id="StartMenuShortcut" Name="Strata Launcher" Description="Set up, start, stop and watch a Strata server"
+                Target="[INSTALLFOLDER]StrataLauncher.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon.ico" />
+      <RegistryValue Root="HKCU" Key="Software\Strata Launcher" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+    </Component>
+
+    <!-- Close a running launcher before its files are replaced or removed. The Strata server is a separate program and keeps running. -->
+    <util:CloseApplication Id="CloseLauncher" Target="StrataLauncher.exe" CloseMessage="yes" RebootPrompt="no" Timeout="5" TerminateProcess="1" />
+
+    <!-- Uninstall (not an upgrade): remove the start-at-sign-in entry the launcher's own switch may have written. -->
+    <SetProperty Id="WixQuietExecCmdLine" Sequence="execute" Before="RemoveSignInEntry"
+                 Value="&quot;[System64Folder]reg.exe&quot; delete &quot;HKCU\Software\Microsoft\Windows\CurrentVersion\Run&quot; /v &quot;Strata Launcher&quot; /f" />
+    <CustomAction Id="RemoveSignInEntry" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec" Execute="immediate" Return="ignore" />
+
+    <!-- Open the launcher after an install the person watched (a double-click), or when asked with LAUNCHAPP=1 (the in-app update). -->
+    <CustomAction Id="OpenLauncher" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]StrataLauncher.exe&quot;" Execute="immediate" Return="asyncNoWait" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RemoveSignInEntry" After="RemoveFiles" Condition="(REMOVE = &quot;ALL&quot;) AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="OpenLauncher" After="InstallFinalize" Condition="(NOT REMOVE) AND ((LAUNCHAPP = &quot;1&quot;) OR (UILevel = 5))" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

@@ -71,24 +71,53 @@ def test_the_same_job_never_runs_twice_at_once():
 
 def test_own_scope_only_where_systemd_can_make_one(monkeypatch):
     cmd = ["strata", "launch"]
+    full = proc.SCOPE + proc.KEEP_ON_OOM
     monkeypatch.setattr(sys, "platform", "linux")
-    assert proc.own_scope(cmd, which=lambda name: None, usable=lambda: True) == cmd
-    scoped = proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", usable=lambda: True)
+    assert proc.own_scope(cmd, which=lambda name: None, head=lambda runner: full) == cmd
+    scoped = proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", head=lambda runner: full)
     assert scoped[0] == "systemd-run" and "--scope" in scoped and scoped[-2:] == cmd and "OOMPolicy=continue" in scoped
+    older = proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", head=lambda runner: proc.SCOPE)
+    assert older[0] == "systemd-run" and "OOMPolicy=continue" not in older and older[-2:] == cmd
     # installed but not usable (a container, a session without a user manager): start the plain way
-    assert proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", usable=lambda: False) == cmd
+    assert proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", head=lambda runner: None) == cmd
     monkeypatch.setattr(sys, "platform", "win32")
-    assert proc.own_scope(cmd, which=lambda name: "C:/x/systemd-run.exe", usable=lambda: True) == cmd
+    assert proc.own_scope(cmd, which=lambda name: "C:/x/systemd-run.exe", head=lambda runner: full) == cmd
 
 
-def test_scope_probe_is_asked_once_and_remembered(monkeypatch):
-    asked = []
+class ScopeRunner:
+    """Stands in for systemd-run: `works` says which kinds of probe succeed."""
 
-    class FakeRunner:
-        def capture(self, cmd, timeout=30, job=None):
-            asked.append(cmd)
-            return 1, "Failed to connect to bus"
-    monkeypatch.setattr(proc, "_scope_works", None)
-    assert proc.scope_available(FakeRunner()) is False
-    assert proc.scope_available(FakeRunner()) is False
-    assert len(asked) == 1 and asked[0][0] == "systemd-run" and asked[0][-1] == "true"
+    def __init__(self, works):
+        self.works, self.asked = works, []
+
+    def capture(self, cmd, timeout=30, job=None):
+        self.asked.append(cmd)
+        kind = "with-policy" if "OOMPolicy=continue" in cmd else "plain"
+        return (0, "") if kind in self.works else (1, "Unknown assignment: OOMPolicy=continue")
+
+
+def fresh_scope(monkeypatch):
+    monkeypatch.setattr(proc, "_scope_asked", False)
+    monkeypatch.setattr(proc, "_scope_head", None)
+
+
+def test_scope_probe_new_systemd(monkeypatch):
+    fresh_scope(monkeypatch)
+    r = ScopeRunner({"with-policy", "plain"})
+    assert proc.scope_head(r) == proc.SCOPE + proc.KEEP_ON_OOM
+    assert proc.scope_head(r) == proc.SCOPE + proc.KEEP_ON_OOM
+    assert len(r.asked) == 1 and r.asked[0][-1] == "true"                # asked once, remembered
+
+
+def test_scope_probe_older_systemd_without_the_policy(monkeypatch):
+    fresh_scope(monkeypatch)
+    r = ScopeRunner({"plain"})
+    assert proc.scope_head(r) == proc.SCOPE
+    assert len(r.asked) == 2
+
+
+def test_scope_probe_where_no_scope_can_be_made(monkeypatch):
+    fresh_scope(monkeypatch)
+    r = ScopeRunner(set())
+    assert proc.scope_head(r) is None and proc.scope_head(r) is None
+    assert len(r.asked) == 2

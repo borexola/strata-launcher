@@ -30,39 +30,50 @@ def no_window_flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
 
 
-_scope_works: bool | None = None
+SCOPE = ["systemd-run", "--user", "--scope", "--quiet", "--collect"]
+KEEP_ON_OOM = ["-p", "OOMPolicy=continue"]                   # scopes know this from systemd 253 on
+_scope_head: list[str] | None = None
+_scope_asked = False
 
 
-def scope_available(runner=None) -> bool:
-    """Linux: can this session start a systemd scope of its own? Asked once with a command that does nothing, then remembered.
+def scope_head(runner=None) -> list[str] | None:
+    """Linux: the start of a command that runs a program in a systemd scope of its own, or None where that cannot be done.
 
-    systemd-run can be installed and still not usable: in a container, or in a session without a user manager.
+    systemd-run can be installed and still not usable (a container, a session without a user manager), and an older
+    systemd does not know the OOMPolicy setting for scopes. So it is tried once with a command that does nothing:
+    first with the setting, then without it. The answer is remembered.
     """
-    global _scope_works
-    if _scope_works is None:
-        probe = ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"]
-        try:
-            if runner is not None:
-                code, _out = runner.capture(probe, timeout=8)
-            else:
-                code = subprocess.run(probe, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8).returncode
-            _scope_works = code == 0
-        except (OSError, subprocess.SubprocessError):
-            _scope_works = False
-    return _scope_works
+    global _scope_head, _scope_asked
+    if not _scope_asked:
+        _scope_asked = True
+        for head in (SCOPE + KEEP_ON_OOM, SCOPE):
+            probe = head + ["--", "true"]
+            try:
+                if runner is not None:
+                    code, _out = runner.capture(probe, timeout=8)
+                else:
+                    code = subprocess.run(probe, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8).returncode
+            except (OSError, subprocess.SubprocessError):
+                code = -1
+            if code == 0:
+                _scope_head = head
+                break
+    return _scope_head
 
 
-def own_scope(cmd: list[str], which=shutil.which, usable=scope_available, runner=None) -> list[str]:
+def own_scope(cmd: list[str], which=shutil.which, head=scope_head, runner=None) -> list[str]:
     """Linux with systemd: run Strata in a scope of its own.
 
     A program started from the desktop shares one scope with everything it starts. When Linux kills a process
     there for lack of memory, systemd ends the whole scope, the launcher included. In its own scope only Strata ends.
     Where a scope cannot be made, the command is returned as it is and Strata starts the plain way.
     """
-    if sys.platform.startswith("linux") and which("systemd-run") and (usable(runner) if usable is scope_available else usable()):
-        return ["systemd-run", "--user", "--scope", "--quiet", "--collect", "-p", "OOMPolicy=continue",
-                f"--unit=strata-launcher-{int(time.time())}", "--"] + cmd
-    return cmd
+    if not (sys.platform.startswith("linux") and which("systemd-run")):
+        return cmd
+    start = head(runner)
+    if not start:
+        return cmd
+    return list(start) + [f"--unit=strata-launcher-{int(time.time())}", "--"] + cmd
 
 
 _spawn_lock = threading.Lock()

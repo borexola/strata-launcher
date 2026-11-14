@@ -3,7 +3,7 @@
 An unofficial companion to Strata (https://github.com/Niko1221/Strata).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 
 APP_NAME = "Strata Launcher"
 APP_ID = "strata-launcher"

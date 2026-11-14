@@ -36,7 +36,8 @@ You need Strata's **Terminal** first (the `strata` command). See
 The installer is not signed. Windows may show "Windows protected your PC" the first time: choose **More info**, then
 **Run anyway**.
 
-It installs into `%LOCALAPPDATA%\Programs\Strata Launcher` and adds one Start menu entry. Nothing else.
+It installs into `%LOCALAPPDATA%\Programs\Strata Launcher`, adds one Start menu entry, and notes its folder under
+`HKEY_CURRENT_USER\Software\Strata Launcher`. Nothing else, and nothing outside your own account.
 
 ### Linux
 
@@ -235,7 +236,7 @@ On Linux, and from source on Windows:
 
 ```bash
 strata-launcher --print     # the strata command for your saved settings
-strata-launcher --start     # what the Start button does, without the window
+strata-launcher --start     # starts the server with your saved settings (it does not ask before a download)
 strata-launcher --stop      # what the Stop button does
 strata-launcher --status    # what Strata is serving now
 ```
@@ -259,7 +260,8 @@ The Windows program from the installer has no console, so these print nothing th
   answers.
 - **Stop** runs `strata launch --stop`. If you run several Strata servers at once, check with Strata which one that stops.
 - One window per person. There is no tray icon.
-- The Windows installer is not signed.
+- The Windows installer is not signed. The in-app update downloads the new installer from this project's GitHub
+  releases over HTTPS and does not check a signature. The release page lists SHA-256 checksums if you want to compare.
 
 ## For developers
 

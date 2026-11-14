@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from . import APP_NAME, __version__, command, config, options, strata
-from .proc import Runner, clean_frozen_environment
+from .proc import Runner, clean_frozen_environment, own_scope
 
 
 def parser() -> argparse.ArgumentParser:
@@ -67,7 +67,8 @@ def main(argv=None) -> int:
         if why:
             print(why, file=sys.stderr)
             return 2
-        return 0 if runner.stream(command.launch_command(cfg, opts), print) == 0 else 1
+        cmd = command.launch_command(cfg, opts)
+        return 0 if runner.stream(own_scope(cmd) if cfg.get("own_scope", True) else cmd, print) == 0 else 1
     if args.selftest:
         from . import selftest
         return selftest.run(seconds=args.selftest_seconds)

@@ -11,6 +11,33 @@ ROOT = Path(__file__).resolve().parent.parent
 FAKE = ROOT / "tools" / "fake_strata"
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Closes every window and ends Qt in order before Python exits. Without this, Qt and Python can tear each other's
+    objects down in the wrong order at exit and crash after the last test has passed."""
+    import gc
+    import threading
+    import time
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError:
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    for w in app.topLevelWidgets():
+        w.close()
+        w.deleteLater()
+    end = time.time() + 5
+    while time.time() < end and any(t.name in ("sampler", "gpu", "action", "info", "why", "copy-key", "strata-update-check", "update-check")
+                                    for t in threading.enumerate()):
+        app.processEvents()
+        time.sleep(0.05)
+    app.processEvents()
+    gc.collect()
+    app.processEvents()
+    app.shutdown()
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))

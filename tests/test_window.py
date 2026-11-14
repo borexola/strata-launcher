@@ -108,7 +108,7 @@ def test_start_twice_runs_one_start_then_stop(window, fake_env):
     assert pump(lambda: window.busy is None and bool(window.sample.get("health")), 30)
     assert window.status_title.text() in ("Running", "Answering…", "Reading the prompt…", "Thinking…")
     assert window.btn_stop.isEnabled() and window.btn_start.text() == "Restart with these settings"
-    assert window.runner.most_active <= 2
+    assert window.runner.most_active <= 3                     # a start, a question to Strata and the lists being read may overlap
     assert pump(lambda: any(k == "start" for k, _t in window.records), 15)          # the engine log reached the Log tab
     assert fake_env["url"] in window.status_sub.text()
     window.btn_stop.click()

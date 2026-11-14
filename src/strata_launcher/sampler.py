@@ -388,9 +388,13 @@ class Sampler:
         self.thread = threading.Thread(target=self._loop, daemon=True, name="sampler")
         self.thread.start()
 
-    def stop(self):
+    def stop(self, wait: float = 3.0):
+        """Ends the readings. Waits a moment for the reading in progress, so nothing calls into a window that is gone."""
         self.stopping = True
         self.gpu.stop()
+        for thread in (self.thread, self.gpu.thread):
+            if thread is not None and thread is not threading.current_thread() and thread.is_alive():
+                thread.join(wait)
 
     def take(self):
         """The newest reading and every log line since the last take: (sample or None, lines, first read of a log)."""
@@ -488,7 +492,7 @@ class Sampler:
                     self._first_log = self._first_log or first
                     tell = not self._notified
                     self._notified = True
-                if tell:
+                if tell and not self.stopping:
                     self.on_ready()
             except Exception as e:                           # one bad reading must not end the readings
                 self.log(f"reading failed: {e!r}")

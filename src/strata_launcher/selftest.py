@@ -187,6 +187,9 @@ def run(seconds: float = 6.0) -> int:
         problems.append(f"{len(left)} helper programs were left running")
     for p in problems:
         out("PROBLEM: " + p)
+    if problems:                                             # what the launcher itself said, to see why
+        for kind, text in [r for r in win.records if r[0] != "detail"][-15:]:
+            out(f"log [{kind}] {text}")
     out("PASS" if not problems else "FAIL")
     finish_report()
     return 0 if not problems else 1

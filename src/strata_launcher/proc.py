@@ -30,13 +30,36 @@ def no_window_flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform.startswith("win") else 0
 
 
-def own_scope(cmd: list[str], which=shutil.which) -> list[str]:
+_scope_works: bool | None = None
+
+
+def scope_available(runner=None) -> bool:
+    """Linux: can this session start a systemd scope of its own? Asked once with a command that does nothing, then remembered.
+
+    systemd-run can be installed and still not usable: in a container, or in a session without a user manager.
+    """
+    global _scope_works
+    if _scope_works is None:
+        probe = ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "true"]
+        try:
+            if runner is not None:
+                code, _out = runner.capture(probe, timeout=8)
+            else:
+                code = subprocess.run(probe, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8).returncode
+            _scope_works = code == 0
+        except (OSError, subprocess.SubprocessError):
+            _scope_works = False
+    return _scope_works
+
+
+def own_scope(cmd: list[str], which=shutil.which, usable=scope_available, runner=None) -> list[str]:
     """Linux with systemd: run Strata in a scope of its own.
 
     A program started from the desktop shares one scope with everything it starts. When Linux kills a process
     there for lack of memory, systemd ends the whole scope, the launcher included. In its own scope only Strata ends.
+    Where a scope cannot be made, the command is returned as it is and Strata starts the plain way.
     """
-    if sys.platform.startswith("linux") and which("systemd-run"):
+    if sys.platform.startswith("linux") and which("systemd-run") and (usable(runner) if usable is scope_available else usable()):
         return ["systemd-run", "--user", "--scope", "--quiet", "--collect", "-p", "OOMPolicy=continue",
                 f"--unit=strata-launcher-{int(time.time())}", "--"] + cmd
     return cmd

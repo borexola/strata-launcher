@@ -69,11 +69,26 @@ def test_the_same_job_never_runs_twice_at_once():
     assert r.most_active == 2
 
 
-def test_own_scope_only_with_systemd(monkeypatch):
+def test_own_scope_only_where_systemd_can_make_one(monkeypatch):
     cmd = ["strata", "launch"]
     monkeypatch.setattr(sys, "platform", "linux")
-    assert proc.own_scope(cmd, which=lambda name: None) == cmd
-    scoped = proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run")
+    assert proc.own_scope(cmd, which=lambda name: None, usable=lambda: True) == cmd
+    scoped = proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", usable=lambda: True)
     assert scoped[0] == "systemd-run" and "--scope" in scoped and scoped[-2:] == cmd and "OOMPolicy=continue" in scoped
+    # installed but not usable (a container, a session without a user manager): start the plain way
+    assert proc.own_scope(cmd, which=lambda name: "/usr/bin/systemd-run", usable=lambda: False) == cmd
     monkeypatch.setattr(sys, "platform", "win32")
-    assert proc.own_scope(cmd, which=lambda name: "C:/x/systemd-run.exe") == cmd
+    assert proc.own_scope(cmd, which=lambda name: "C:/x/systemd-run.exe", usable=lambda: True) == cmd
+
+
+def test_scope_probe_is_asked_once_and_remembered(monkeypatch):
+    asked = []
+
+    class FakeRunner:
+        def capture(self, cmd, timeout=30, job=None):
+            asked.append(cmd)
+            return 1, "Failed to connect to bus"
+    monkeypatch.setattr(proc, "_scope_works", None)
+    assert proc.scope_available(FakeRunner()) is False
+    assert proc.scope_available(FakeRunner()) is False
+    assert len(asked) == 1 and asked[0][0] == "systemd-run" and asked[0][-1] == "true"

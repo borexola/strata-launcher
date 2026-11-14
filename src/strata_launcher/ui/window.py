@@ -1106,7 +1106,7 @@ class MainWindow(QMainWindow):
                         return True, ""
             cmd = command.launch_command(cfg, self.opts)
             if cfg.get("own_scope", True):
-                cmd = own_scope(cmd)
+                cmd = own_scope(cmd, runner=self.runner)
             code = self.runner.stream(cmd, self.say_launch, job="launch")
             if code != 0:
                 return False, f"Strata did not start. The Log tab has its messages; the full output is in {paths.log_file()}"

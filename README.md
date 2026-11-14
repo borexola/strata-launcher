@@ -76,6 +76,10 @@ one that has a `bin` folder with `strata` in it. You can change it later on the 
 
 ![The Setup tab](docs/screenshots/setup.png)
 
+The same tab on Windows:
+
+![The Setup tab on Windows](docs/screenshots/windows-setup.png)
+
 Then, on the **Setup** tab:
 
 1. **What to start.** Pick one:

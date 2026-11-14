@@ -1,5 +1,7 @@
 # Strata Launcher
 
+[![CI](https://github.com/borexola/strata-launcher/actions/workflows/ci.yml/badge.svg)](https://github.com/borexola/strata-launcher/actions/workflows/ci.yml)
+
 A small desktop window for [Strata](https://github.com/Niko1221/Strata), the local AI server. You point it at your
 Strata folder. It then helps you choose a model and its settings, starts and stops the server, and shows what the
 server is doing. It runs on Windows and Linux.
@@ -59,7 +61,7 @@ The download holds the ready-made program, so you do not need Python.
 **From the source code instead** (needs Python 3.10 or newer; it downloads Qt, about 100 MB):
 
 ```bash
-git clone https://github.com/OWNER/strata-launcher.git
+git clone https://github.com/borexola/strata-launcher.git
 ```
 
 ```bash
@@ -270,7 +272,7 @@ The Windows program from the installer has no console, so these print nothing th
 ## For developers
 
 ```bash
-git clone https://github.com/OWNER/strata-launcher.git
+git clone https://github.com/borexola/strata-launcher.git
 cd strata-launcher
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
@@ -332,6 +334,10 @@ self-tested, upgraded and uninstalled, and the Linux download is built and self-
 
 **A release:** set the version in `src/strata_launcher/__init__.py`, commit, and push a tag `v<that version>`. The
 release workflow tests, builds both downloads and publishes them with their checksums.
+
+## License
+
+MIT. See [LICENSE](LICENSE). You may use, copy, change and share it freely.
 
 ## Credits
 

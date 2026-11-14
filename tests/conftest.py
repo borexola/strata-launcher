@@ -26,7 +26,7 @@ def fake_env(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_STRATA_HOME", str(fake_home))
     monkeypatch.setenv("FAKE_STRATA_PYTHON", sys.executable)
     monkeypatch.setenv("FAKE_STRATA_LOAD_S", "0.2")
-    monkeypatch.delenv("STRATA_LAUNCHER_UPDATE_URL", raising=False)
+    monkeypatch.setenv("STRATA_LAUNCHER_UPDATE_URL", "http://127.0.0.1:9/latest")      # tests never ask GitHub
     command = FAKE / "bin" / ("strata.cmd" if os.name == "nt" else "strata")
     return {"port": port, "cfg_dir": cfg_dir, "fake_home": fake_home, "strata": str(command), "url": f"http://127.0.0.1:{port}",
             "nvidia_smi": str(FAKE / "nvidia-smi.py")}

@@ -9,8 +9,8 @@ APP_NAME = "Strata Launcher"
 APP_ID = "strata-launcher"
 
 # Where this project lives on GitHub, as "owner/name". The update check and the links in the window use it.
-# While the owner part is still the placeholder below, the update check stays off.
-GITHUB_REPO = "OWNER/strata-launcher"
+# A copy whose owner part is the placeholder "OWNER" keeps the update check off.
+GITHUB_REPO = "borexola/strata-launcher"
 
 STRATA_URL = "https://github.com/Niko1221/Strata"
 

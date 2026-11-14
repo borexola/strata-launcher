@@ -62,7 +62,13 @@ else
     die "run this script from the unpacked release folder or from the source folder."
 fi
 
-[ -n "${ICON_SRC:-}" ] && [ -f "$ICON_SRC" ] && cp "$ICON_SRC" "$ICON_DIR/strata-launcher.png"
+# The icon. The menu entry names the file itself, so it shows at once. Touching the icon folder tells a running
+# desktop to look again; without that a new icon stays invisible until the next sign-in.
+ICON=strata-launcher
+if [ -n "${ICON_SRC:-}" ] && [ -f "$ICON_SRC" ] && cp "$ICON_SRC" "$ICON_DIR/strata-launcher.png"; then
+    ICON="$ICON_DIR/strata-launcher.png"
+    touch "$DATA/icons/hicolor" 2>/dev/null || true
+fi
 
 cat > "$BIN/strata-launcher" <<EOF
 #!/bin/sh
@@ -77,7 +83,7 @@ Name=Strata Launcher
 GenericName=Local AI server
 Comment=Set up, start, stop and watch a Strata server
 Exec="$RUN"
-Icon=strata-launcher
+Icon=$ICON
 Terminal=false
 StartupNotify=true
 StartupWMClass=strata-launcher
@@ -89,7 +95,7 @@ command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$
 # If "open when I sign in" was switched on, point that entry at the program just installed.
 AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/strata-launcher.desktop"
 if [ -f "$AUTOSTART" ]; then
-    sed -i "s|^Exec=.*|Exec=\"$RUN\" --at-login|" "$AUTOSTART"
+    sed -i -e "s|^Exec=.*|Exec=\"$RUN\" --at-login|" -e "s|^Icon=.*|Icon=$ICON|" "$AUTOSTART"
 fi
 
 say ""

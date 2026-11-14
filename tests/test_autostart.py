@@ -66,3 +66,15 @@ def test_windows_run_value():
 def test_launcher_command_installed_and_from_source():
     assert autostart.launcher_command(frozen=True, executable="/opt/x/strata-launcher") == ["/opt/x/strata-launcher"]
     assert autostart.launcher_command(frozen=False, executable="/venv/bin/python") == ["/venv/bin/python", "-m", "strata_launcher"]
+
+
+def test_linux_entry_names_the_installed_icon_file_when_there_is_one(tmp_path):
+    env = {"XDG_CONFIG_HOME": str(tmp_path / "config"), "XDG_DATA_HOME": str(tmp_path / "data")}
+    a = autostart.LinuxAutostart(env=env)
+    a.enable(["strata-launcher"])
+    assert "Icon=strata-launcher\n" in a.path.read_text(encoding="utf-8")          # no icon file: the name
+    icon = tmp_path / "data" / "icons" / "hicolor" / "256x256" / "apps" / "strata-launcher.png"
+    icon.parent.mkdir(parents=True)
+    icon.write_bytes(b"png")
+    a.enable(["strata-launcher"])
+    assert f"Icon={icon}\n" in a.path.read_text(encoding="utf-8")

@@ -47,6 +47,7 @@ def _windows_quote(arg: str) -> str:
 class LinuxAutostart:
     def __init__(self, env: dict | None = None):
         env = os.environ if env is None else env
+        self.env = env
         base = env.get("XDG_CONFIG_HOME") or str(Path(env.get("HOME") or Path.home()) / ".config")
         self.path = Path(base) / "autostart" / f"{APP_ID}.desktop"
 
@@ -57,14 +58,22 @@ class LinuxAutostart:
             return False
         return "Hidden=true" not in text and "X-GNOME-Autostart-enabled=false" not in text
 
-    def enable(self, cmd: list[str], icon: str = APP_ID) -> None:
+    def enable(self, cmd: list[str], icon: str = "") -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        icon = icon or self.installed_icon() or APP_ID
         exec_line = " ".join(_desktop_quote(c) for c in cmd + [FLAG])
         self.path.write_text(
             "[Desktop Entry]\nType=Application\n"
             f"Name={APP_NAME}\nComment=Opens {APP_NAME} when you sign in\n"
             f"Exec={exec_line}\nIcon={icon}\nTerminal=false\nStartupNotify=false\nX-GNOME-Autostart-enabled=true\n",
             encoding="utf-8")
+
+    def installed_icon(self) -> str:
+        """The icon file install.sh put in place, if it is there. Naming the file works even before the desktop has
+        noticed a newly installed icon."""
+        base = self.env.get("XDG_DATA_HOME") or str(Path(self.env.get("HOME") or Path.home()) / ".local" / "share")
+        path = Path(base) / "icons" / "hicolor" / "256x256" / "apps" / f"{APP_ID}.png"
+        return str(path) if path.is_file() else ""
 
     def disable(self) -> None:
         try:

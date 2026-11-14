@@ -78,3 +78,26 @@ def test_linux_entry_names_the_installed_icon_file_when_there_is_one(tmp_path):
     icon.write_bytes(b"png")
     a.enable(["strata-launcher"])
     assert f"Icon={icon}\n" in a.path.read_text(encoding="utf-8")
+
+
+def test_snapshot_and_restore_put_back_exactly_what_was_there(tmp_path):
+    a = autostart.LinuxAutostart(env={"XDG_CONFIG_HOME": str(tmp_path)})
+    assert a.snapshot() is None
+    a.enable(["/opt/installed/strata-launcher"])
+    saved = a.snapshot()
+    a.disable()
+    a.enable(["/some/other/python", "-m", "strata_launcher"])              # what a run from source would write
+    a.restore(saved)
+    assert a.path.read_bytes() == saved and b"/opt/installed/strata-launcher" in saved
+    a.restore(None)
+    assert not a.path.exists()
+    reg = FakeRegistry()
+    w = autostart.WindowsAutostart(reg)
+    assert w.snapshot() is None
+    w.enable([r"C:\installed\StrataLauncher.exe"])
+    saved = w.snapshot()
+    w.enable([r"C:\python\python.exe", "-m", "strata_launcher"])
+    w.restore(saved)
+    assert reg.values == {APP_NAME: saved} and "installed" in saved
+    w.restore(None)
+    assert reg.values == {}

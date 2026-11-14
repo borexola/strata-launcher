@@ -68,6 +68,20 @@ class LinuxAutostart:
             f"Exec={exec_line}\nIcon={icon}\nTerminal=false\nStartupNotify=false\nX-GNOME-Autostart-enabled=true\n",
             encoding="utf-8")
 
+    def snapshot(self):
+        """The entry exactly as it is now (None: there is none), to put back later with restore()."""
+        try:
+            return self.path.read_bytes()
+        except OSError:
+            return None
+
+    def restore(self, saved) -> None:
+        if saved is None:
+            self.disable()
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_bytes(saved)
+
     def installed_icon(self) -> str:
         """The icon file install.sh put in place, if it is there. Naming the file works even before the desktop has
         noticed a newly installed icon."""
@@ -122,6 +136,16 @@ class WindowsAutostart:
 
     def disable(self) -> None:
         self.registry.delete(APP_NAME)
+
+    def snapshot(self):
+        """The entry exactly as it is now (None: there is none), to put back later with restore()."""
+        return self.registry.get(APP_NAME)
+
+    def restore(self, saved) -> None:
+        if saved is None:
+            self.registry.delete(APP_NAME)
+        else:
+            self.registry.set(APP_NAME, saved)
 
     def where(self) -> str:
         return "HKEY_CURRENT_USER\\" + RUN_KEY

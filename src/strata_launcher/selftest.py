@@ -137,11 +137,13 @@ def run(seconds: float = 6.0) -> int:
             step("stopping")
         elif s == "stopping" and win.busy is None and not up and age > 1:
             out(f"stopped after {age:.1f} s | {counts()}")
+            saved = win.autostart.snapshot()                             # the person's own entry, byte for byte
             state["login_was"] = win.autostart.is_enabled()
             win.sw_login.setChecked(not state["login_was"])
             on_now = win.autostart.is_enabled()
             win.sw_login.setChecked(state["login_was"])
-            back = win.autostart.is_enabled() == state["login_was"]
+            win.autostart.restore(saved)                                 # put back exactly what was there, not a rewritten one
+            back = win.autostart.is_enabled() == state["login_was"] and win.autostart.snapshot() == saved
             out(f"flipped the start-at-sign-in switch and back | changed: {on_now != state['login_was']}, restored: {back}")
             if on_now == state["login_was"] or not back:
                 problems.append("the start-at-sign-in switch did not change the system and change it back")

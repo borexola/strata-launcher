@@ -1,0 +1,4 @@
+#!/bin/sh
+# A stand-in for the `strata` command, for tests and screenshots. It is not Strata and loads no model.
+here=$(cd "$(dirname "$0")" && pwd)
+exec "${FAKE_STRATA_PYTHON:-python3}" "$here/../fake_strata.py" "$@"

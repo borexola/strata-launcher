@@ -1,0 +1,147 @@
+{
+  "about": [
+    "This file lists the settings the launcher shows and the 'strata launch' flags each one turns into.",
+    "Do not edit this copy: an update replaces it. Put your changes in your own options.json instead",
+    "(the App tab has a button that opens it). In your file:",
+    "  'settings': a list. An entry with a key that exists here replaces that setting; a new key adds one.",
+    "  'remove': a list of keys to hide, for example [\"speed\", \"tune\"].",
+    "  'address': the address the launcher asks for live figures. {port} is the value of the setting with the key 'port'.",
+    "Setting types:",
+    "  choice: 'options' is a list of [value, text shown]. 'flags' is added with {value} replaced.",
+    "          'flags_for' gives other flags for particular values. 'editable': true lets people type their own value.",
+    "  number: 'min', 'max', 'step'. 'optional': true adds the choice \"Strata's default\".",
+    "  switch: 'on' and 'off' are the flags for each state.",
+    "  text:   free text; 'flags' is added with {value} replaced.",
+    "An empty value always adds nothing, so Strata uses its own default (or the preset's value).",
+    "Every flag is a normal 'strata launch' flag. Run: strata launch --help"
+  ],
+  "address": "http://127.0.0.1:{port}",
+  "settings": [
+    {
+      "key": "context",
+      "group": "Model",
+      "label": "Context size",
+      "help": "How much text the model can hold at once. Bigger sizes take more graphics memory.",
+      "type": "choice",
+      "editable": true,
+      "default": "",
+      "options": [["", "Strata's default"], ["8k", "8K"], ["16k", "16K"], ["32k", "32K"], ["64k", "64K"], ["128k", "128K"], ["256k", "256K"]],
+      "flags": ["--context", "{value}"]
+    },
+    {
+      "key": "parallel",
+      "group": "Model",
+      "label": "Requests at the same time",
+      "help": "Each extra slot takes graphics memory. Strata's default fits the number to your card.",
+      "type": "choice",
+      "default": "",
+      "options": [["", "Strata's default"], ["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"], ["6", "6"], ["7", "7"], ["8", "8"]],
+      "flags": ["--parallel", "{value}"]
+    },
+    {
+      "key": "vision",
+      "group": "Model",
+      "label": "Pictures",
+      "help": "Lets the model read pictures, if it can. GPU is faster and takes about 1 GB of graphics memory. CPU takes a few seconds per picture.",
+      "type": "choice",
+      "default": "",
+      "options": [["", "Strata's default"], ["on", "On"], ["gpu", "On, on the graphics card"], ["cpu", "On, on the processor"], ["off", "Off"]],
+      "flags": ["--vision", "{value}"]
+    },
+    {
+      "key": "drafting",
+      "group": "Speed and memory",
+      "label": "Drafter",
+      "help": "A drafter guesses words ahead so answers come faster. Off saves about 1 GB of graphics memory.",
+      "type": "choice",
+      "default": "",
+      "options": [["", "Strata's default"], ["auto", "Auto"], ["mtp", "MTP"], ["dflash2", "DFlash2"], ["off", "Off"]],
+      "flags": ["--drafting", "{value}"]
+    },
+    {
+      "key": "kv",
+      "group": "Speed and memory",
+      "label": "Conversation memory format",
+      "help": "How a conversation is kept on the card. q4_0 takes half the memory of int8.",
+      "type": "choice",
+      "default": "",
+      "options": [["", "Strata's default"], ["int8", "int8"], ["q4_0", "q4_0"], ["k8v4", "k8v4"], ["fp16", "fp16"]],
+      "flags": ["--kv", "{value}"]
+    },
+    {
+      "key": "reserve",
+      "group": "Speed and memory",
+      "label": "Graphics memory kept free (MiB)",
+      "help": "Raise it if the log warns that graphics memory is low.",
+      "type": "number",
+      "optional": true,
+      "default": null,
+      "min": 256,
+      "max": 8192,
+      "step": 128,
+      "flags": ["--set", "vram-reserve-mib={value}"]
+    },
+    {
+      "key": "speed",
+      "group": "Speed and memory",
+      "label": "Speed or quality (DeepSeek models)",
+      "help": "Only DeepSeek models use this. Faster uses fewer parts of the model per word. Full uses all of them.",
+      "type": "choice",
+      "default": "",
+      "options": [["", "Strata's default"], ["faster", "Faster"], ["full", "Full quality"]],
+      "flags": ["--speed", "{value}"]
+    },
+    {
+      "key": "tune",
+      "group": "Speed and memory",
+      "label": "Tuning before the start",
+      "help": "Strata can measure your computer to find the fastest settings. Quick takes about 20 minutes the first time. A stored result is used again.",
+      "type": "choice",
+      "default": "skip",
+      "options": [["skip", "Skip"], ["quick", "Quick"], ["thorough", "Thorough"]],
+      "flags": ["--tune", "{value}"]
+    },
+    {
+      "key": "gpu",
+      "group": "Graphics cards",
+      "label": "Cards to use",
+      "help": "Card numbers, for example 0 or 0,1. Leave empty and Strata chooses. The Setup tab lists the cards it found.",
+      "type": "text",
+      "default": "",
+      "placeholder": "Strata's choice",
+      "flags": ["--gpu", "{value}"]
+    },
+    {
+      "key": "gpu_roles",
+      "group": "Graphics cards",
+      "label": "A role for each card",
+      "help": "For two or more cards: main, helper or off for each, for example 0=main,1=helper. Leave empty and Strata chooses.",
+      "type": "text",
+      "default": "",
+      "placeholder": "Strata's choice",
+      "flags": ["--gpu-roles", "{value}"]
+    },
+    {
+      "key": "access",
+      "group": "Access",
+      "label": "Who can reach it",
+      "help": "This computer only is the safe choice. With a wider choice Strata makes an API key that other devices must send.",
+      "type": "choice",
+      "default": "local",
+      "options": [["local", "This computer only"], ["lan", "My network"], ["tailscale", "Tailscale"], ["cloudflare", "Cloudflare tunnel"]],
+      "flags": ["--access", "{value}"]
+    },
+    {
+      "key": "port",
+      "group": "Access",
+      "label": "Port",
+      "help": "The number at the end of the server's address.",
+      "type": "number",
+      "default": 8080,
+      "min": 1024,
+      "max": 65535,
+      "step": 1,
+      "flags": ["--port", "{value}"]
+    }
+  ]
+}

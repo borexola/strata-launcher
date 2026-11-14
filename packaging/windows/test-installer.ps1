@@ -36,13 +36,15 @@ function Products {
     # What Windows Installer itself knows about: every installed product called "Strata Launcher".
     # Context 0 means installed for this person only; 1 would mean for all users of the PC.
     $installer = New-Object -ComObject WindowsInstaller.Installer
-    foreach ($code in @($installer.Products)) {
-        $name = $installer.GetType().InvokeMember("ProductInfo", "GetProperty", $null, $installer, @($code, "ProductName"))
+    $type = $installer.GetType()
+    $codes = @($type.InvokeMember("Products", "GetProperty", $null, $installer, $null)) | ForEach-Object { [string]$_ }
+    foreach ($code in $codes) {
+        try { $name = [string]$type.InvokeMember("ProductInfo", "GetProperty", $null, $installer, @($code, "ProductName")) } catch { continue }
         if ($name -eq "Strata Launcher") {
             [pscustomobject]@{
                 Code = $code
-                Version = $installer.GetType().InvokeMember("ProductInfo", "GetProperty", $null, $installer, @($code, "VersionString"))
-                Context = $installer.GetType().InvokeMember("ProductInfo", "GetProperty", $null, $installer, @($code, "AssignmentType"))
+                Version = [string]$type.InvokeMember("ProductInfo", "GetProperty", $null, $installer, @($code, "VersionString"))
+                Context = [string]$type.InvokeMember("ProductInfo", "GetProperty", $null, $installer, @($code, "AssignmentType"))
             }
         }
     }

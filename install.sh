@@ -85,7 +85,6 @@ Categories=Utility;
 Keywords=AI;LLM;Strata;
 EOF
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$(dirname "$DESKTOP")" 2>/dev/null || true
-command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true
 
 # If "open when I sign in" was switched on, point that entry at the program just installed.
 AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/strata-launcher.desktop"

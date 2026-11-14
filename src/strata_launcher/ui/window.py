@@ -111,8 +111,13 @@ class MainWindow(QMainWindow):
         icon = paths.asset("icon.png")
         if icon.exists():
             self.setWindowIcon(QIcon(str(icon)))
-        self.resize(int(cfg["window"].get("width", 1000)), int(cfg["window"].get("height", 860)))
-        self.setMinimumSize(640, 560)
+        self.setMinimumSize(640, 520)
+        width, height = int(cfg["window"].get("width", 1000)), int(cfg["window"].get("height", 860))
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:                               # never open larger than the screen (small laptops)
+            room = screen.availableGeometry()
+            width, height = min(width, room.width() - 40), min(height, room.height() - 60)
+        self.resize(max(640, width), max(520, height))
 
         self._build()
         self._connect()
